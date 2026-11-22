@@ -41,6 +41,21 @@
 {% endblock %}
 <script src="{{ url_for('static', filename='js/refmask.js', v=asset_version) }}" defer></script>
 <script src="{{ url_for('static', filename='js/push.js', v=asset_version) }}" defer></script>
+<script>
+  // A Home Screen app reopened from the background shows the page it had, not
+  // a fresh one. Reload when it comes back on a new day, or (on Today) after a while.
+  (function () {
+    var loaded = new Date(), isToday = {{ 'true' if request.endpoint == 'main.index' else 'false' }};
+    function stale() {
+      var now = new Date();
+      return now.toDateString() !== loaded.toDateString() || (isToday && now - loaded > 10 * 60 * 1000);
+    }
+    function check() { if (document.visibilityState === "visible" && stale()) location.reload(); }
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("pageshow", function (e) { if (e.persisted) check(); });
+    window.addEventListener("focus", check);
+  })();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
