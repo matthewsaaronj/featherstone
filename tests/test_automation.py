@@ -224,3 +224,12 @@ def test_keys_are_made_on_first_run(tmp_path, monkeypatch):
 def test_push_test_explains_no_devices(app):
     r = app.test_client().post("/push/test")
     assert r.json["ok"] is False and "no devices" in r.json["error"]
+
+
+def test_each_copy_has_its_own_session_cookie(tmp_path):
+    a = create_app({"SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'a.db'}",
+                    "DATA_DIR": str(tmp_path / "a"), "TESTING": True})
+    b = create_app({"SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'b.db'}",
+                    "DATA_DIR": str(tmp_path / "b"), "TESTING": True})
+    assert a.config["SESSION_COOKIE_NAME"] != b.config["SESSION_COOKIE_NAME"]
+    assert a.config["SESSION_COOKIE_NAME"].startswith("featherstone_")

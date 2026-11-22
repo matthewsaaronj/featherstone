@@ -51,6 +51,12 @@ def create_app(test_config: dict | None = None) -> Flask:
     # Keys the app makes for itself in the data folder (see keys.py).
     data_dir = app.config["DATA_DIR"]
     os.makedirs(data_dir, exist_ok=True)
+    # Browsers share cookies across ports, so two copies on one Mac (different
+    # ports, same host) would read each other's quiz session. Name the cookie
+    # after this copy's data folder to keep them apart.
+    import hashlib
+    app.config["SESSION_COOKIE_NAME"] = "featherstone_" + hashlib.sha1(
+        os.path.abspath(data_dir).encode()).hexdigest()[:8]
     if not app.config.get("SECRET_KEY"):  # Flask pre-defines it as None
         app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or keys.secret_key(data_dir)
     app.config.setdefault("VAPID_PRIVATE_KEY_FILE", os.getenv("VAPID_PRIVATE_KEY_FILE")
