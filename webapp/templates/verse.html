@@ -20,23 +20,32 @@
       <div class="seg {{ p.state }}">
         <div class="bar"><span style="width: {{ p.pct }}%"></span></div>
         <span class="name">{{ p.name }}</span>
-        <span class="num">{% if p.total %}{{ p.done }} / {{ p.total - (p.extra or 0) }}{% if p.extra %} +{{ p.extra }}{% endif %}{% elif p.state == 'current' %}{{ p.done }} checks{% else %}—{% endif %}</span>
+        <span class="num">{% if p.total %}{{ p.done }} / {{ p.total }}{% if p.extra %} · {{ p.extra }} missed{% endif %}{% elif p.state == 'current' %}{{ p.done }} checks{% else %}—{% endif %}</span>
       </div>
       {% endfor %}
     </div>
     <dl class="facts">
-      <div><dt>{{ 'Due' if overdue else 'Next review' }}</dt><dd class="{{ 'warn' if overdue }}">{{ v.due_date|nice_date(true) }}{% if v.due_date == today %} (today){% endif %}</dd></div>
+      <div><dt>{{ 'Late' if overdue else 'Next review' }}</dt><dd class="{{ 'warn' if overdue }}">{{ v.due_date|nice_date(true) }}{% if v.due_date == today %} (today){% endif %}{% if overdue %} · counts through {{ open_until|nice_date(true) }}{% endif %}</dd></div>
       <div><dt>Rhythm</dt><dd>{{ rhythm or '—' }}</dd></div>
       <div><dt>Started</dt><dd>{{ v.start_date|nice_date if v.start_date else '—' }}</dd></div>
-      <div><dt>Extra reviews</dt><dd>{{ v.extra }}</dd></div>
+      <div><dt>Missed</dt><dd>{{ v.extra }}</dd></div>
     </dl>
   </section>
+  {% if struggling and move_back %}
+  <section class="card struggle">
+    <p><strong>Struggling.</strong> Missed 3 of the last 5 reviews. {% if move_back == v.stage %}Restart Daily to build it back up?{% else %}Move it back to {{ STAGE_TITLES[move_back] }} for more frequent reviews?{% endif %}</p>
+    <form method="post" action="{{ url_for('main.verse_move', vid=v.id) }}">
+      <input type="hidden" name="stage" value="{{ move_back }}">
+      <input type="hidden" name="done" value="0">
+      <button class="btn secondary small" type="submit">{% if move_back == v.stage %}Restart Daily{% else %}Move back to {{ STAGE_TITLES[move_back] }}{% endif %}</button>
+    </form>
+  </section>
+  {% endif %}
   <form method="post" action="{{ url_for('main.practice') }}">
     <input type="hidden" name="verse" value="{{ v.id }}">
-    <button class="btn secondary" type="submit">{{ 'Review now' if v.due_date and v.due_date <= today else 'Practice now' }}</button>
+    <button class="btn secondary" type="submit">{{ 'Practice now' if practice else 'Review now' }}</button>
   </form>
-  {% if makeup.ready %}<p class="row-sub" style="margin: -10px 8px 0;">A practice “Got it” today makes up 1 of its {{ v.extra }} extra review{{ 's' if v.extra != 1 }}.</p>
-  {% elif makeup.possible and makeup.opens %}<p class="row-sub" style="margin: -10px 8px 0;">Practice can make up an extra review from {{ makeup.opens|nice_date(true) }}.</p>{% endif %}
+  {% if v.retry_date and v.retry_date > today %}<p class="row-sub" style="margin: -10px 8px 0;">Missed today. It comes back tomorrow to try again{% if open_until and open_until > today %}, and counts through {{ open_until|nice_date(true) }}{% endif %}.</p>{% endif %}
   {% else %}
   <form method="post" action="{{ url_for('main.verse_start', vid=v.id) }}" class="actions">
     <button class="btn" type="submit">Start in Daily today</button>
@@ -129,11 +138,9 @@
 
   <div class="meta-foot">
     <span class="mono" title="{{ v.id }}">ID {{ v.id[:8] }}</span>
-    {% if v.stage == 'backlog' %}
-    <form method="post" action="{{ url_for('main.verse_delete', vid=v.id) }}" onsubmit="return confirm('Remove {{ v.display_ref }} from the Backlog?');">
-      <button class="btn danger small" type="submit">Remove from Backlog</button>
+    <form method="post" action="{{ url_for('main.verse_delete', vid=v.id) }}" onsubmit="return confirm('Delete {{ v.display_ref }}{{ ' and its review history' if v.stage != 'backlog' }}? This can\'t be undone.');">
+      <button class="btn danger small" type="submit">Delete verse</button>
     </form>
-    {% endif %}
   </div>
 </main>
 {% endblock %}

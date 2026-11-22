@@ -13,8 +13,7 @@
     <div><strong class="shaky">{{ s.results.shaky }}</strong><span>Shaky</span></div>
     <div><strong class="missed">{{ s.results.missed }}</strong><span>Missed</span></div>
   </div>
-  {% if s.made_up %}<p class="done-note">Made up {{ s.made_up }} missed review{{ 's' if s.made_up != 1 }}.</p>{% endif %}
-  {% if s.results.missed and not practice_set %}<p class="done-note">Missed verses come back tomorrow for practice, and their stage gets one extra review.</p>{% endif %}
+  {% if s.results.missed and not practice_set %}<p class="done-note">Missed verses come back tomorrow to try again while their review is still open. If it closes first, that stage runs one review longer.</p>{% endif %}
   {% else %}
   <p class="done-sub">Everything due today is finished.</p>
   {% endif %}

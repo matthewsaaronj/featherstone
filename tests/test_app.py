@@ -66,10 +66,14 @@ def test_review_counts_and_misses(app):
     svc.record_review(v, "got", "ref_to_text", DAY)
     assert (v.done, v.extra, v.due_date, v.retry_date) == (1, 0, DAY + timedelta(days=1), None)
 
-    svc.record_review(v, "missed", "text_to_ref", DAY + timedelta(days=1))
-    assert (v.done, v.extra) == (1, 1)
-    assert v.due_date == DAY + timedelta(days=2)
-    assert v.retry_date == DAY + timedelta(days=2)
+    day2 = DAY + timedelta(days=1)
+    svc.record_review(v, "missed", "text_to_ref", day2)
+    # Still open; hidden for the rest of today. Daily's window is same day only,
+    # so tomorrow it's counted missed and tomorrow's review is up.
+    assert (v.done, v.extra, v.due_date, v.retry_date) == (1, 0, day2, day2 + timedelta(days=1))
+    assert v not in svc.review_queue(day2)
+    svc.daily_upkeep(day2 + timedelta(days=1))
+    assert (v.done, v.extra, v.due_date, v.retry_date) == (1, 1, day2 + timedelta(days=1), None)
     assert Review.query.filter_by(verse_id=v.id, counted=True).count() == 1
 
 
@@ -92,7 +96,7 @@ def test_upkeep_runs_once_per_day(app):
     svc.daily_upkeep(later)
     svc.daily_upkeep(later)
     assert Review.query.filter_by(result="skipped").count() == 3
-    assert v.extra == 3 and v.due_date == later
+    assert v.extra == 3 and v.due_date == later and v.sched().required(svc.get_settings()) == 7
 
 
 def test_pages_render(app):
@@ -238,53 +242,55 @@ def test_practice_stage_runs_each_verse_once(app):
     assert a.done == 1 and b.done == 1
 
 
-# ---------- make-ups through practice ----------
+# ---------- late reviews (grace window) ----------
 
-def _daily_with_extra(app):
+def _weekly(app, due):
     v = _start(app)
-    svc.daily_upkeep(DAY + timedelta(days=1))   # Nov 21 slot skipped → 1 extra
-    assert v.extra == 1 and v.due_date == DAY + timedelta(days=1)
-    svc.record_review(v, "got", "ref_to_text", DAY + timedelta(days=1))  # today's review
+    v.apply(svc.schedule.Schedule("weekly", 1, 0, due, due.weekday(), 21))
+    db.session.commit()
     return v
 
 
-def test_daily_practice_got_it_makes_up_once_per_day(app):
-    v = _daily_with_extra(app)
-    day = DAY + timedelta(days=1)
-    assert svc.makeup_status(v, day).ready
-    assert svc.record_review(v, "got", "text_to_ref", day) is True
-    assert v.extra == 0 and v.done == 1
-    assert not svc.makeup_status(v, day).possible
-    assert Review.query.filter_by(verse_id=v.id, made_up=True).count() == 1
-
-
-def test_shaky_practice_does_not_make_up(app):
-    v = _daily_with_extra(app)
-    assert svc.record_review(v, "shaky", "text_to_ref", DAY + timedelta(days=1)) is False
-    assert v.extra == 1
-
-
-def test_weekly_make_up_waits_three_days(app):
-    v = _start(app)
+def test_weekly_late_review_counts_within_three_days(app):
     sat = date(2026, 11, 28)
-    v.apply(svc.schedule.Schedule("weekly", 1, 0, sat, 5, 21))
-    db.session.commit()
-    svc.record_review(v, "missed", "text_to_ref", sat)   # failed Saturday → 1 extra
-    assert v.extra == 1
-    st = svc.makeup_status(v, sat + timedelta(days=1))
-    assert st.possible and not st.ready and st.opens == sat + timedelta(days=3)
-    assert svc.record_review(v, "got", "text_to_ref", sat + timedelta(days=1)) is False
-    assert svc.record_review(v, "got", "text_to_ref", sat + timedelta(days=3)) is True
-    assert v.extra == 0
+    v = _weekly(app, sat)
+    tue = sat + timedelta(days=3)
+    svc.daily_upkeep(tue)
+    assert v in svc.review_queue(tue) and svc.today_view(tue)["n_overdue"] == 1
+    svc.record_review(v, "got", "text_to_ref", tue)
+    assert (v.done, v.extra, v.due_date) == (2, 0, date(2026, 12, 5))  # dates stay put
 
 
-def test_monthly_practice_never_makes_up(app):
-    v = _start(app)
-    v.apply(svc.schedule.Schedule("monthly", 2, 1, date(2026, 12, 21), 5, 21))
-    db.session.commit()
-    assert not svc.makeup_status(v, DAY).possible
-    assert svc.record_review(v, "got", "text_to_ref", DAY) is False
-    assert v.extra == 1
+def test_weekly_miss_retries_next_day_then_counts(app):
+    sat = date(2026, 11, 28)
+    v = _weekly(app, sat)
+    svc.record_review(v, "missed", "text_to_ref", sat)
+    assert v not in svc.review_queue(sat)
+    svc.record_review(v, "got", "text_to_ref", sat)        # same day again: practice only
+    assert v.done == 1
+    sun = sat + timedelta(days=1)
+    assert v in svc.review_queue(sun)
+    svc.record_review(v, "got", "text_to_ref", sun)
+    assert (v.done, v.extra, v.due_date) == (2, 0, date(2026, 12, 5))
+
+
+def test_weekly_review_lost_after_window(app):
+    sat = date(2026, 11, 28)
+    v = _weekly(app, sat)
+    svc.record_review(v, "missed", "text_to_ref", sat)
+    svc.daily_upkeep(sat + timedelta(days=4))
+    assert (v.done, v.extra, v.due_date, v.retry_date) == (1, 1, date(2026, 12, 5), None)
+    assert svc.is_practice(v, sat + timedelta(days=4))
+
+
+def test_grace_days_setting(app):
+    c = app.test_client()
+    page = c.get("/settings").get_data(as_text=True)
+    assert 'name="grace_weekly"' in page and 'name="grace_monthly"' in page
+    form = {"grace_weekly": "5", "grace_monthly": "99", "grace_mastered": "10"}
+    c.post("/settings", data=form)
+    g = svc.get_settings()["grace_days"]
+    assert (g["weekly"], g["monthly"], g["mastered"]) == (5, 13, 10)
 
 
 # ---------- AI suggestions ----------
@@ -326,3 +332,102 @@ def test_suggestion_gives_up_gracefully(app, monkeypatch):
     page = app.test_client().post("/add", data={"action": "suggest", "topic": "faith",
                                                 "seen": "Alma 32:21"}).get_data(as_text=True)
     assert "find a new verse" in page
+
+
+# ---------- Daily limit, quiz difficulty, struggling, delete ----------
+
+def test_intake_waits_while_daily_is_full(app):
+    cfg = svc.get_settings()
+    cfg["auto_add"].update(every_n_days=7, daily_limit=2)
+    for ref in ("Alma 32:21", "Ether 12:27"):
+        svc.start_verse(svc.add_verse(ref).verse, DAY)
+    svc.add_verse("Moroni 10:4")
+    db.session.commit()
+    assert svc.intake(DAY, cfg) is None              # Daily full
+    assert svc.intake(DAY, cfg, force=True) is not None  # by hand still works
+    cfg["auto_add"]["daily_limit"] = 0               # no limit
+    svc.add_verse("Mosiah 2:17")
+    assert svc.intake(DAY + timedelta(days=7), cfg) is not None
+
+
+def test_multiple_choice_gets_rarer_and_never_in_mastered(app):
+    cfg = svc.get_settings()
+    cfg["quiz"]["answer_style"] = "mix"
+    v = _start(app)
+    days = [DAY + timedelta(days=i) for i in range(400)]
+    share = {}
+    for st in ("daily", "weekly", "monthly", "mastered"):
+        v.stage = st
+        share[st] = sum(svc.answer_style(v, d, cfg) == "choice" for d in days) / len(days)
+    assert 0.4 < share["daily"] < 0.6
+    assert 0.15 < share["weekly"] < 0.35
+    assert 0.03 < share["monthly"] < 0.18
+    assert share["mastered"] == 0
+    cfg["quiz"]["answer_style"] = "choice"
+    assert svc.answer_style(v, DAY, cfg) == "type"   # even when set to always choose
+
+
+def test_mastered_quiz_has_no_choices_link(app):
+    v = _start(app)
+    svc.move_verse(v, "mastered", DAY)
+    v.due_date = DAY
+    db.session.commit()
+    c = app.test_client()
+    for _ in range(4):  # whichever direction it picks, the choice view never appears
+        page = c.get("/review?start=1&answer=choice").get_data(as_text=True)
+        assert "Show choices instead" not in page and 'name="style" value="choice"' not in page
+
+
+def _miss(v, n, result="missed"):
+    from datetime import datetime
+    for _ in range(n):
+        db.session.add(Review(verse_id=v.id, stage=v.stage, mode="text_to_ref", result=result,
+                              reviewed_at=datetime.now()))
+    db.session.commit()
+    db.session.expire(v, ["reviews"])
+
+
+def test_struggling_after_three_misses_until_moved(app):
+    v = _start(app)
+    svc.move_verse(v, "weekly", DAY)
+    _miss(v, 2)
+    assert not svc.struggling(v)
+    _miss(v, 1)
+    assert svc.struggling(v)
+    page = app.test_client().get(f"/verse/{v.id}").get_data(as_text=True)
+    assert "Move back to Daily" in page
+    svc.move_verse(v, "daily", DAY)
+    assert not svc.struggling(v)
+
+
+def test_delete_verse_from_any_stage(app):
+    v = _start(app)
+    _miss(v, 2)
+    vid = v.id
+    r = app.test_client().post(f"/verse/{vid}/delete")
+    assert r.status_code == 302
+    assert db.session.get(Verse, vid) is None
+    assert Review.query.filter_by(verse_id=vid).count() == 0
+
+
+def test_dots_show_misses_and_urgent_verses_come_first(app):
+    a, b = _start(app, "Alma 32:21"), _start(app, "Ether 12:27")
+    svc.daily_upkeep(DAY + timedelta(days=2))   # both lose two days
+    day = DAY + timedelta(days=2)
+    b.extra, a.extra = 2, 0                    # only Ether has misses
+    db.session.commit()
+    view = svc.today_view(day)
+    first = view["due_by_stage"]["daily"][0]
+    assert first.verse.id == b.id and first.urgent
+    assert first.dots == ["d-miss"] * 2 + ["d-todo"] * 7
+    assert not view["due_by_stage"]["daily"][1].urgent
+    app.config["TODAY_OVERRIDE"] = day.isoformat()
+    page = app.test_client().get("/").get_data(as_text=True)
+    assert 'class="row urgent"' in page and "d-miss" in page
+
+
+def test_late_weekly_is_urgent_only_on_last_day(app):
+    sat = date(2026, 11, 28)
+    v = _weekly(app, sat)
+    assert not svc.today_view(sat + timedelta(days=2))["overdue"][0].urgent
+    assert svc.today_view(sat + timedelta(days=3))["overdue"][0].urgent

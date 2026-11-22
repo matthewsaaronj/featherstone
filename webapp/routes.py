@@ -63,10 +63,12 @@ def verse(vid: str):
     cfg = svc.get_settings()
     s = v.sched()
     return render_template(
-        "verse.html", tab="verses", v=v, s=s, cfg=cfg, makeup=svc.makeup_status(v, today()),
+        "verse.html", tab="verses", v=v, s=s, cfg=cfg, practice=svc.is_practice(v, today()),
+        open_until=schedule.window_end(s, cfg) if s else None,
         label=schedule.label(s, cfg) if s else None,
         progress=svc.progress(v, cfg), rhythm=svc.rhythm(v),
         reviews=v.reviews[:8], overdue=bool(s and schedule.is_overdue(s, today())),
+        struggling=svc.struggling(v), move_back=svc.MOVE_BACK.get(v.stage),
     )
 
 
@@ -106,14 +108,13 @@ def verse_text(vid: str):
 
 @bp.post("/verse/<vid>/delete")
 def verse_delete(vid: str):
+    """Delete a verse from any stage, with its review history."""
     v = db.session.get(Verse, vid) or abort(404)
-    if v.stage != "backlog":
-        abort(400)
-    name = v.display_ref
+    name, stage = v.display_ref, v.stage
     db.session.delete(v)
     db.session.commit()
-    flash(f"Removed {name} from the Backlog.")
-    return redirect(url_for("main.stage", stage="backlog"))
+    flash(f"Deleted {name}.")
+    return redirect(url_for("main.stage", stage=stage))
 
 
 @bp.route("/add", methods=["GET", "POST"])
@@ -178,6 +179,10 @@ def settings():
             flash("Mastered checks should be months separated by commas, like 3, 6, 12.", "error")
         cfg["mastered"]["yearly_interval"] = _int("yearly_interval", cfg["mastered"]["yearly_interval"], 1, 60)
         cfg["auto_add"]["every_n_days"] = _int("every_n_days", cfg["auto_add"]["every_n_days"], 0, 365)
+        g = cfg.setdefault("grace_days", {})
+        for st in ("weekly", "monthly", "mastered"):
+            g[st] = _int(f"grace_{st}", schedule.grace_days(st, cfg), 0, schedule.MAX_GRACE_DAYS[st])
+        cfg["auto_add"]["daily_limit"] = _int("daily_limit", cfg["auto_add"].get("daily_limit", 7), 0, 100)
         cfg["auto_add"]["topic_default"] = (request.form.get("topic_default") or "").strip()
         cfg["auto_add"]["chatgpt_fallback"] = request.form.get("chatgpt_fallback") == "on"
         cfg["obfuscation"]["enabled"] = request.form.get("hints_enabled") == "on"
@@ -255,9 +260,9 @@ def _current(s: dict):
 def _quiz_ctx(v: Verse, s: dict, mode: str) -> dict:
     cfg = svc.get_settings()
     sch = v.sched()
-    practice = not schedule.is_due(sch, today())
+    practice = svc.is_practice(v, today())
     return {"tab": "today", "v": v, "mode": mode, "cfg": cfg, "practice": practice,
-            "makeup": svc.makeup_status(v, today()) if practice else None,
+            "open_until": schedule.window_end(sch, cfg),
             "stage_label": schedule.label(sch, cfg),
             "overdue": schedule.is_overdue(sch, today()),
             "position": s["done"] + 1, "total": max(s["total"], 1),
@@ -283,8 +288,11 @@ def review():
         style = request.args.get("answer")
         if style not in ("type", "choice"):
             style = svc.answer_style(v, today(), ctx["cfg"])
+        if not svc.choices_allowed(v):
+            style = "type"
         ctx["style"] = style
-        if style == "choice" and v.ref:
+        ctx["choices_allowed"] = svc.choices_allowed(v)
+        if style == "choice":
             ctx["options"] = svc.choice_options(v, today())
         ctx["books"] = refs.BOOKS
     return render_template("review.html", **ctx)
@@ -318,10 +326,8 @@ def review_grade(vid: str):
         abort(400)
     if v.sched() is None:
         return redirect(url_for("main.review"))
-    made_up = svc.record_review(v, result, mode, today(), answer=request.form.get("answer") or None)
+    svc.record_review(v, result, mode, today(), answer=request.form.get("answer") or None)
     s = _sitting()
-    if made_up:
-        s["made_up"] = s.get("made_up", 0) + 1
     s["done"] += 1
     s["results"][result] += 1
     s["skipped"] = [x for x in s["skipped"] if x != v.id]

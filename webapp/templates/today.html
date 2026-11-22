@@ -20,7 +20,7 @@
 <main class="content">
   {% if overdue %}
   <section class="group">
-    <h2 class="eyebrow warn">Overdue</h2>
+    <h2 class="eyebrow warn">Late</h2>
     <div class="list">{% for it in overdue %}{{ verse_row(it, show_stage=true) }}{% endfor %}</div>
   </section>
   {% endif %}

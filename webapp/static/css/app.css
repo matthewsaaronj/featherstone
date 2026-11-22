@@ -331,8 +331,12 @@ select.input { appearance: none; -webkit-appearance: none; padding-right: 40px; 
 /* progress markers in verse rows */
 .dots i.d-todo { background: var(--dot-off); }
 .dots i.d-done { background: var(--accent); }
-.dots i.d-extra { background: transparent; box-shadow: inset 0 0 0 1.5px var(--warn); }
-.dots i.d-extra-done { background: var(--warn); }
+.dots i.d-miss { background: #D6453B; }
+.row.urgent { box-shadow: inset 3px 0 0 #D6453B; }
+.today-badge { display: inline-block; white-space: nowrap; margin-right: 6px; padding: 0 7px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; line-height: 18px; vertical-align: 1px;
+  color: var(--bad); background: color-mix(in srgb, #D6453B 14%, transparent); }
+.bad { color: var(--bad); }
 .minibar { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; width: 56px; }
 .minibar .track { width: 56px; height: 5px; border-radius: 3px; background: var(--dot-off); overflow: hidden; }
 .minibar .track span { display: block; height: 5px; background: var(--accent); }
@@ -361,7 +365,10 @@ select.input { appearance: none; -webkit-appearance: none; padding-right: 40px; 
 .push-status { margin: 0; font-size: 15px; }
 .push-status.ok { color: var(--ok); font-weight: 600; }
 .push-status.warn { color: var(--warn); }
-.card.pending { border-color: var(--warn); background: var(--warn-soft); }
+.card.pending, .card.struggle { border-color: var(--warn); background: var(--warn-soft); }
+.card.struggle { display: flex; flex-direction: column; gap: 12px; }
+.card.struggle p { margin: 0; font-size: 15px; }
+.card.struggle .btn { align-self: flex-start; }
 input[type="time"].input { font-size: 16px; text-align: center; }
 
 /* appearance picker: three-way segmented control */

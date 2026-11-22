@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -136,19 +136,37 @@ def test_late_review_keeps_dates():
     assert s.due == date(2026, 12, 12) and s.done == 2
 
 
-def test_skipped_slot_adds_extra_review():
+@pytest.mark.parametrize("stage,due,last_ok", [
+    ("weekly", date(2026, 12, 5), date(2026, 12, 8)),     # 3 days
+    ("monthly", date(2026, 12, 21), date(2026, 12, 28)),  # 7 days
+    ("mastered", date(2027, 3, 21), date(2027, 4, 4)),    # 14 days
+])
+def test_grace_window(stage, due, last_ok):
+    s = schedule.Schedule(stage, 1, 0, due, 5, 21)
+    assert schedule.window_end(s, CFG) == last_ok
+    kept, missed = schedule.catch_up(s, last_ok, CFG)
+    assert missed == [] and kept == s
+    lost, missed = schedule.catch_up(s, last_ok + timedelta(days=1), CFG)
+    assert missed == [due] and lost.extra == 1 and lost.done == 1 and lost.due > due
+
+
+def test_lost_review_makes_stage_one_longer_not_two():
     s = schedule.Schedule("weekly", 1, 0, date(2026, 12, 5), 5, 21)
-    s, missed = schedule.catch_up(s, date(2026, 12, 13), CFG)
+    s, missed = schedule.catch_up(s, date(2026, 12, 9), CFG)
     assert missed == [date(2026, 12, 5)]
     assert s.due == date(2026, 12, 12) and s.done == 1 and s.extra == 1
-    assert s.required(CFG) == 5
+    assert s.required(CFG) == 4   # still 4 good reviews, just finishing a week later
 
 
-def test_failed_review_adds_extra_and_never_demotes():
+def test_missed_answer_leaves_review_open_and_never_demotes():
     s = schedule.Schedule("monthly", 5, 0, date(2027, 6, 21), 5, 21)
-    s = schedule.record(s, counted=False, cfg=CFG)
-    assert s.stage == "monthly" and s.done == 5 and s.extra == 1
-    assert s.due == date(2027, 7, 21)
+    assert schedule.record(s, counted=False, cfg=CFG) == s
+
+
+def test_mastered_lost_check_keeps_same_gap():
+    s = schedule.Schedule("mastered", 1, 0, date(2027, 3, 21), 5, 21)  # next gap would be 6 months
+    s, _ = schedule.catch_up(s, date(2027, 4, 5), CFG)
+    assert s.done == 1 and s.due == date(2027, 9, 21)
 
 
 def test_day_31_clamps_to_month_end():
@@ -161,12 +179,13 @@ def test_daily_catch_up_after_days_away():
     s = schedule.start(S)
     s, missed = schedule.catch_up(s, date(2026, 11, 24), CFG)
     assert missed == [date(2026, 11, 21), date(2026, 11, 22), date(2026, 11, 23)]
-    assert s.due == date(2026, 11, 24) and s.extra == 3 and s.required(CFG) == 10
+    assert s.due == date(2026, 11, 24) and s.extra == 3 and s.required(CFG) == 7
 
 
 def test_labels():
     assert schedule.label(schedule.start(S), CFG) == "Day 1 of 7"
     assert schedule.label(schedule.Schedule("monthly", 2, 0, S, 5, 21), CFG) == "Month 3 of 24"
+    assert schedule.label(schedule.Schedule("daily", 1, 5, S, 5, 21), CFG) == "Day 2 of 7 · 5 missed"
 
 
 # ---------- lenient typing ----------
@@ -229,27 +248,6 @@ def test_place_sets_done_within_stage():
     s = schedule.place("monthly", date(2026, 11, 25), 5, 21, CFG, done=5)
     assert s.done == 5 and schedule.label(s, CFG) == "Month 6 of 24"
     assert schedule.place("weekly", date(2026, 11, 25), 5, 21, CFG, done=99).done == 3
-
-
-# ---------- make-ups ----------
-
-def test_make_up_clears_one_extra():
-    s = schedule.Schedule("daily", 3, 2, date(2026, 11, 25), 5, 21)
-    m = schedule.make_up(s, CFG)
-    assert (m.stage, m.done, m.extra, m.due) == ("daily", 3, 1, s.due)
-
-
-def test_make_up_that_finishes_stage_promotes_on_rhythm():
-    # Daily: 6 of 7 done plus 1 extra outstanding; tomorrow's slot is the extra.
-    s = schedule.Schedule("daily", 7, 1, date(2026, 11, 29), 5, 21)
-    m = schedule.make_up(s, CFG)
-    # Last real slot was Nov 28 (a Saturday) → first weekly review the next Saturday.
-    assert m.stage == "weekly" and m.due == date(2026, 12, 5)
-
-
-def test_no_make_up_for_monthly():
-    s = schedule.Schedule("monthly", 3, 1, date(2026, 12, 21), 5, 21)
-    assert schedule.make_up(s, CFG) == s
 
 
 def test_dangling_separator_from_formatting():

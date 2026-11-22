@@ -16,6 +16,9 @@ DEFAULTS: dict[str, Any] = {
         "weekly_repeats": 4,
         "monthly_repeats": 24,
     },
+    # Days after its date that a review still counts if done late. Past that it
+    # is counted missed and the stage runs one review longer. Daily is same day.
+    "grace_days": {"daily": 0, "weekly": 3, "monthly": 7, "mastered": 14},
     "mastered": {
         # Months between Mastered checks: 3, then 6, then 12, then every
         # yearly_interval months after that.
@@ -24,6 +27,7 @@ DEFAULTS: dict[str, Any] = {
     },
     "auto_add": {
         "every_n_days": 7,  # 0 = never add automatically
+        "daily_limit": 7,   # don't auto-add while Daily has this many (adding by hand still works)
         "topic_default": "The Book of Mormon",
         "chatgpt_fallback": False,  # ask ChatGPT for a verse when Backlog is empty
     },
@@ -45,8 +49,11 @@ DEFAULTS: dict[str, Any] = {
     },
     "quiz": {
         # How to answer "Which verse is this?": "type", "choice" (multiple
-        # choice from the same book), or "mix" (alternate between them).
+        # choice from the same book), or "mix" (some of each, with fewer
+        # choices as a verse advances; see choice_share). Mastered is always typed.
         "answer_style": "mix",
+        # With "mix": the share of questions that start as multiple choice.
+        "choice_share": {"daily": 0.5, "weekly": 0.25, "monthly": 0.1, "mastered": 0.0},
     },
     "notify": {
         # Phone notifications (Web Push): a morning summary, and an evening

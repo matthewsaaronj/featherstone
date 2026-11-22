@@ -10,10 +10,13 @@ never shift because a review was done late:
     Mastered  3, 6, 12 months apart (mastered.review_months), then every
               yearly_interval months, on the same day of month
 
-Each stage needs its full number of counted reviews. A review slot that is
-skipped (the next slot's date arrives first) or answered "Missed" adds one
-extra slot to the end of that stage, on the same rhythm. A verse never drops
-back a stage.
+Each stage needs its full number of good reviews (Got it or Shaky). A review
+stays open for a grace window after its date (grace_days: Daily same day only,
+Weekly 3 days, Monthly 7, Mastered 14). Done late but inside the window, it
+counts as that review. A "Missed" answer leaves it open to try again. When the
+window closes without a good review, that review is lost: it's counted as
+missed, and since the stage still needs its full number of good reviews, the
+stage runs one review longer. A verse never drops back a stage.
 
 Everything here is pure: plain dates in, new state out.
 """
@@ -32,22 +35,36 @@ NEXT_STAGE = {"daily": "weekly", "weekly": "monthly", "monthly": "mastered"}
 # so the first monthly review isn't two days after the last weekly one.
 MIN_MONTHLY_GAP_DAYS = 14
 
+# Days after its date that a review stays open, and the most each may be set
+# to (the window must close before the next review's date).
+DEFAULT_GRACE_DAYS = {"daily": 0, "weekly": 3, "monthly": 7, "mastered": 14}
+MAX_GRACE_DAYS = {"daily": 0, "weekly": 6, "monthly": 13, "mastered": 60}
+
+
+def grace_days(stage: str, cfg: dict) -> int:
+    val = cfg.get("grace_days", {}).get(stage, DEFAULT_GRACE_DAYS.get(stage, 0))
+    try:
+        val = int(val)
+    except (TypeError, ValueError):
+        val = DEFAULT_GRACE_DAYS.get(stage, 0)
+    return max(0, min(val, MAX_GRACE_DAYS.get(stage, 0)))
+
 
 @dataclass(frozen=True)
 class Schedule:
     stage: str             # daily | weekly | monthly | mastered
     done: int              # counted reviews in this stage (mastered: checks passed)
-    extra: int             # extra slots added to this stage by misses
+    extra: int             # reviews in this stage lost to misses (each makes it one longer)
     due: date              # date of the current open review slot
     anchor_weekday: int    # 0 = Monday … 6 = Sunday
     anchor_day: int        # 1–31
 
     def required(self, cfg: dict) -> Optional[int]:
-        """Counted reviews needed to leave this stage (None for mastered)."""
+        """Good reviews needed to leave this stage (None for mastered)."""
         cad = cfg["cadence"]
         base = {"daily": cad["daily_repeats"], "weekly": cad["weekly_repeats"],
                 "monthly": cad["monthly_repeats"]}.get(self.stage)
-        return None if base is None else int(base) + self.extra
+        return None if base is None else int(base)
 
     @property
     def position(self) -> int:
@@ -137,61 +154,38 @@ def place(stage: str, on: date, anchor_weekday: int, anchor_day: int, cfg: dict,
 
 
 def record(s: Schedule, counted: bool, cfg: dict) -> Schedule:
-    """Close the current slot. counted=False means missed (skipped or failed)."""
-    if s.stage == "mastered":
-        done = s.done + 1 if counted else s.done
-        nxt = replace(s, done=done)
-        return replace(nxt, due=next_slot(nxt if counted else s, s.due, cfg))
-
-    done = s.done + (1 if counted else 0)
-    extra = s.extra + (0 if counted else 1)
-    nxt = replace(s, done=done, extra=extra)
-    required = nxt.required(cfg)
+    """A review of the open slot. A good one (counted) closes it and moves on;
+    a missed one leaves it open to try again within its window."""
+    if not counted:
+        return s
+    done = s.done + 1
+    required = s.required(cfg)
     if required is not None and done >= required:
         stage = NEXT_STAGE[s.stage]
         due = first_slot(stage, s.due, s.anchor_weekday, s.anchor_day, cfg)
         return Schedule(stage, 0, 0, due, s.anchor_weekday, s.anchor_day)
+    nxt = replace(s, done=done)
     return replace(nxt, due=next_slot(nxt, s.due, cfg))
 
 
-# Make-ups: a practice "Got it" can clear one extra review in these stages,
-# once this many days have passed since the miss. Monthly and Mastered extras
-# can only be worked off on schedule, since their point is the long gap.
-MAKEUP_WAIT_DAYS = {"daily": 0, "weekly": 3}
+def lose(s: Schedule, cfg: dict) -> Schedule:
+    """The open slot's window closed without a good review: count it missed and
+    move to the next date. (Mastered: the next check keeps the same gap.)"""
+    return replace(s, extra=s.extra + 1, due=next_slot(s, s.due, cfg))
 
 
-def previous_slot(s: Schedule) -> date:
-    """The slot date just before the current one, within the stage's rhythm."""
-    if s.stage == "daily":
-        return s.due - timedelta(days=1)
-    if s.stage == "weekly":
-        return s.due - timedelta(days=7)
-    raise ValueError(f"no make-ups in {s.stage!r}")
-
-
-def make_up(s: Schedule, cfg: dict) -> Schedule:
-    """Clear one extra review. If that completes the stage, move on to the next
-    stage as if its last review were the slot before the current one."""
-    if s.stage not in MAKEUP_WAIT_DAYS or s.extra <= 0:
-        return s
-    nxt = replace(s, extra=s.extra - 1)
-    if s.done >= (nxt.required(cfg) or 0):
-        stage = NEXT_STAGE[s.stage]
-        due = first_slot(stage, previous_slot(s), s.anchor_weekday, s.anchor_day, cfg)
-        return Schedule(stage, 0, 0, due, s.anchor_weekday, s.anchor_day)
-    return nxt
+def window_end(s: Schedule, cfg: dict) -> date:
+    """Last day the open review still counts."""
+    return s.due + timedelta(days=grace_days(s.stage, cfg))
 
 
 def catch_up(s: Schedule, today: date, cfg: dict) -> tuple[Schedule, list[date]]:
-    """Mark slots missed when the next slot's date has arrived without a review.
-
-    Returns the updated schedule and the dates of the slots that were missed.
-    A slot that is merely overdue (its next slot hasn't come yet) stays open.
-    """
+    """Lose every slot whose window has closed. Returns the updated schedule and
+    the dates of the slots that were lost."""
     missed: list[date] = []
-    while next_slot(s, s.due, cfg) <= today:
+    while today > window_end(s, cfg):
         missed.append(s.due)
-        s = record(s, counted=False, cfg=cfg)
+        s = lose(s, cfg)
     return s, missed
 
 
@@ -200,6 +194,7 @@ def is_due(s: Schedule, today: date) -> bool:
 
 
 def is_overdue(s: Schedule, today: date) -> bool:
+    """Late but still open (catch_up has already closed anything past its window)."""
     return s.due < today
 
 
@@ -208,9 +203,9 @@ def label(s: Schedule, cfg: dict) -> str:
     n = s.done + 1
     if s.stage == "mastered":
         return f"Mastered check {n}"
-    base = (s.required(cfg) or 0) - s.extra
+    base = s.required(cfg) or 0
     unit = {"daily": "Day", "weekly": "Week", "monthly": "Month"}[s.stage]
     text = f"{unit} {n} of {base}"
     if s.extra:
-        text += f" · {s.extra} extra"
+        text += f" · {s.extra} missed"
     return text

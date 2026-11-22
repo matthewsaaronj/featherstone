@@ -39,7 +39,7 @@
     <div class="quiz-actions">
       <button class="btn" type="submit">Check</button>
       <button class="btn ghost" type="submit" name="gave_up" value="1" formnovalidate>I don't know — show me</button>
-      {% if v.ref %}<a class="switch-style" href="{{ url_for('main.review', answer='choice') }}">Show choices instead</a>{% endif %}
+      {% if choices_allowed %}<a class="switch-style" href="{{ url_for('main.review', answer='choice') }}">Show choices instead</a>{% endif %}
     </div>
   </form>
   {% endif %}

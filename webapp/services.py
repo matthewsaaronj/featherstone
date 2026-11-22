@@ -164,7 +164,7 @@ def start_verse(v: Verse, on: date) -> None:
 # ---------------- daily upkeep ----------------
 
 def catch_up_all(on: date, cfg: dict) -> int:
-    """Close review slots whose next slot has arrived. Returns how many were missed."""
+    """Close reviews whose grace window has passed. Returns how many were lost."""
     total = 0
     for v in Verse.query.filter(Verse.stage.in_(schedule.ACTIVE_STAGES)).all():
         s = v.sched()
@@ -178,6 +178,7 @@ def catch_up_all(on: date, cfg: dict) -> int:
                                   counted=False, reviewed_at=datetime.now()))
         if missed:
             v.apply(s)
+            v.retry_date = None
             total += len(missed)
     return total
 
@@ -186,6 +187,9 @@ def _intake_allowed(on: date, cfg: dict) -> bool:
     n = int(cfg["auto_add"].get("every_n_days", 0))
     if n <= 0:
         return False
+    limit = int(cfg["auto_add"].get("daily_limit", 0) or 0)
+    if limit and Verse.query.filter_by(stage="daily").count() >= limit:
+        return False  # Daily is full; try again on a later day
     last = kv_get("last_auto_added")
     if not last:
         return True
@@ -244,65 +248,38 @@ def _stamp(on: date) -> datetime:
     return datetime.combine(on, datetime.now().time())
 
 
-@dataclass
-class MakeUp:
-    """Whether practicing this verse now can clear one extra review."""
-    possible: bool            # the verse has extras in a stage that allows make-ups
-    ready: bool = False       # …and the wait has passed and none was made up today
-    opens: Optional[date] = None   # when it becomes ready, if waiting
-
-
-def makeup_status(v: Verse, on: date) -> MakeUp:
+def is_practice(v: Verse, on: date) -> bool:
+    """Practice never counts: the verse has no open review, or it was already
+    tried today and missed (it comes back tomorrow, while its window is open)."""
     s = v.sched()
-    if s is None or s.stage not in schedule.MAKEUP_WAIT_DAYS or s.extra <= 0:
-        return MakeUp(False)
-    if schedule.is_due(s, on):
-        return MakeUp(False)  # a due review counts normally
-    done_today = Review.query.filter(
-        Review.verse_id == v.id, Review.made_up.is_(True),
-        db.func.date(Review.reviewed_at) == on.isoformat()).first()
-    if done_today:
-        return MakeUp(True, ready=False, opens=on + timedelta(days=1))
-    misses = Review.query.filter(
-        Review.verse_id == v.id, Review.stage == s.stage, Review.practice.is_(False),
-        Review.result.in_(("skipped", "missed"))).all()
-    last = max([(r.slot_date if r.result == "skipped" and r.slot_date else r.reviewed_at.date())
-                for r in misses], default=None)
-    wait = schedule.MAKEUP_WAIT_DAYS[s.stage]
-    opens = (last + timedelta(days=wait)) if last else on
-    return MakeUp(True, ready=on >= opens, opens=None if on >= opens else opens)
+    return s is None or not schedule.is_due(s, on) or bool(v.retry_date and v.retry_date > on)
 
 
-def record_review(v: Verse, result: str, mode: str, on: date, answer: Optional[str] = None) -> bool:
-    """Record a quiz result. got/shaky count; missed adds an extra slot and a retry tomorrow.
-
-    Practice (verse not due) never counts toward the stage, but in Daily and
-    Weekly a practice "Got it" can make up one missed review (see makeup_status).
-    Returns True when this review made one up.
-    """
+def record_review(v: Verse, result: str, mode: str, on: date, answer: Optional[str] = None) -> None:
+    """Record a quiz result. Got it / Shaky on an open review counts and moves on.
+    Missed leaves the review open and brings the verse back tomorrow; if its
+    window closes first, catch-up counts it missed (see schedule.catch_up)."""
     cfg = get_settings()
     s = v.sched()
     if s is None:
-        return False
-    is_practice = not schedule.is_due(s, on)
+        return
+    practice = is_practice(v, on)
     counted = result in ("got", "shaky")
-    made_up = is_practice and result == "got" and makeup_status(v, on).ready
-    db.session.add(Review(verse_id=v.id, slot_date=None if is_practice else s.due, stage=s.stage,
+    db.session.add(Review(verse_id=v.id, slot_date=None if practice else s.due, stage=s.stage,
                           position=s.done, mode=mode, result=result,
-                          counted=counted and not is_practice, practice=is_practice,
-                          answer=answer, made_up=made_up, reviewed_at=_stamp(on)))
-    if is_practice:
-        if made_up:
-            v.apply(schedule.make_up(s, cfg))
-        v.retry_date = None if counted else on + timedelta(days=1)
-        db.session.commit()
-        return made_up
+                          counted=counted and not practice, practice=practice,
+                          answer=answer, reviewed_at=_stamp(on)))
+    if practice:
+        if counted and v.retry_date and v.retry_date <= on:
+            v.retry_date = None  # an old practice retry, now done
     else:
-        v.apply(schedule.record(s, counted=counted, cfg=cfg))
-        v.retry_date = None if counted else on + timedelta(days=1)
-        v.hint_salt = 0
+        if counted:
+            v.apply(schedule.record(s, counted=True, cfg=cfg))
+            v.retry_date = None
+            v.hint_salt = 0
+        else:
+            v.retry_date = on + timedelta(days=1)
     db.session.commit()
-    return False
 
 
 # ---------------- views ----------------
@@ -314,12 +291,15 @@ class Item:
     due: Optional[date]
     overdue: bool = False
     practice: bool = False
-    # Progress marker: "dots" (Daily/Weekly: one per review, extras marked) or
+    # Progress marker: "dots" (Daily/Weekly: one per review) or
     # "bar" (Monthly: too many reviews for dots).
     marker: Optional[str] = None
-    dots: list[str] = field(default_factory=list)   # CSS classes: d-done | d-todo | d-extra | d-extra-done
+    dots: list[str] = field(default_factory=list)   # CSS classes: d-done | d-todo
     done: int = 0
     total: int = 0
+    struggling: bool = False
+    urgent: bool = False                # do it today or the stage gets longer (again)
+    open_until: Optional[date] = None   # last day a late review still counts
 
     @property
     def pct(self) -> int:
@@ -331,18 +311,19 @@ def _item(v: Verse, on: date, cfg: dict, practice: bool = False) -> Item:
     if s is None:
         return Item(v, STAGE_TITLES.get(v.stage, v.stage), None)
     it = Item(v, schedule.label(s, cfg), s.due, overdue=schedule.is_overdue(s, on),
-              practice=practice)
+              practice=practice, struggling=struggling(v), open_until=schedule.window_end(s, cfg))
     total = s.required(cfg)
     if total is None:  # Mastered: no fixed length
         return it
     it.done, it.total = s.done, total
+    if schedule.is_due(s, on) and not practice:
+        last_day = schedule.window_end(s, cfg) <= on
+        it.urgent = last_day and (it.overdue or s.extra > 0)
     if s.stage in ("daily", "weekly"):
-        base = total - s.extra
+        # One dot per review the stage now takes: good ones, then one red dot
+        # per missed review (each made the stage one longer), then those to go.
         it.marker = "dots"
-        for i in range(total):
-            extra, filled = i >= base, i < s.done
-            it.dots.append(("d-extra-done" if filled else "d-extra") if extra
-                           else ("d-done" if filled else "d-todo"))
+        it.dots = ["d-done"] * s.done + ["d-miss"] * s.extra + ["d-todo"] * (total - s.done)
     else:
         it.marker = "bar"
     return it
@@ -356,15 +337,18 @@ def today_view(on: date) -> dict:
         s = v.sched()
         if s is None:
             continue
+        if v.retry_date and v.retry_date > on:
+            continue  # missed today; back tomorrow
         if schedule.is_overdue(s, on):
             overdue.append(_item(v, on, cfg))
         elif schedule.is_due(s, on):
             due_by_stage[s.stage].append(_item(v, on, cfg))
         elif v.retry_date and v.retry_date <= on:
             practice.append(_item(v, on, cfg, practice=True))
-    overdue.sort(key=lambda i: i.due)
+    # Urgent first (last chance before the stage gets longer), most missed first.
+    overdue.sort(key=lambda i: (not i.urgent, i.due))
     for lst in due_by_stage.values():
-        lst.sort(key=lambda i: i.verse.reference)
+        lst.sort(key=lambda i: (not i.urgent, -i.verse.extra, i.verse.reference))
     n_due = len(overdue) + sum(len(l) for l in due_by_stage.values())
     return {"overdue": overdue, "due_by_stage": due_by_stage, "practice": practice,
             "n_due": n_due, "n_overdue": len(overdue), "counts": stage_counts()}
@@ -400,7 +384,7 @@ def progress(v: Verse, cfg: dict) -> list[dict]:
         if i < cur:
             out.append({"name": STAGE_TITLES[st], "done": base[st], "total": base[st], "pct": 100, "state": "done"})
         elif i == cur:
-            total = base[st] + v.extra
+            total = base[st]
             out.append({"name": STAGE_TITLES[st], "done": v.done, "total": total, "extra": v.extra,
                         "pct": round(100 * v.done / total) if total else 0, "state": "current"})
         else:
@@ -491,11 +475,40 @@ ANSWER_STYLES = ("type", "choice", "mix")
 def answer_style(v: Verse, on: date, cfg: dict) -> str:
     """How to answer "Which verse is this?": "type" or "choice" (multiple choice).
     With the "mix" setting it alternates by a stable per-verse, per-day coin flip."""
-    style = cfg.get("quiz", {}).get("answer_style", "mix")
+    if not choices_allowed(v):
+        return "type"
+    quiz = cfg.get("quiz", {})
+    style = quiz.get("answer_style", "mix")
     if style in ("type", "choice"):
         return style
-    flip = int(texts.sha1(f"{v.id}|{on.isoformat()}|style")[:2], 16) % 2
-    return "choice" if flip else "type"
+    share = float(quiz.get("choice_share", {}).get(v.stage, 0.5))
+    roll = int(texts.sha1(f"{v.id}|{on.isoformat()}|style")[:4], 16) / 0x10000
+    return "choice" if roll < share else "type"
+
+
+def choices_allowed(v: Verse) -> bool:
+    """Mastered verses are always typed: no multiple choice to lean on."""
+    return v.stage != "mastered" and v.ref is not None
+
+
+# A verse is "struggling" after this many misses in its last few quiz reviews
+# (counting only reviews since it was last moved by hand).
+STRUGGLE_MISSES, STRUGGLE_WINDOW = 3, 5
+MOVE_BACK = {"daily": "daily", "weekly": "daily", "monthly": "weekly", "mastered": "monthly"}
+
+
+def struggling(v: Verse) -> bool:
+    if v.stage not in MOVE_BACK:
+        return False
+    recent = []
+    for r in v.reviews:  # newest first
+        if r.mode == "manual":
+            break
+        if r.mode in QUIZ_MODES and not r.practice:
+            recent.append(r)
+            if len(recent) == STRUGGLE_WINDOW:
+                break
+    return sum(r.result == "missed" for r in recent) >= STRUGGLE_MISSES
 
 
 def choice_options(v: Verse, on: date) -> list[refs.Ref]:

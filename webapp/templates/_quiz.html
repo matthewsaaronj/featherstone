@@ -8,10 +8,8 @@
 {%- endmacro %}
 
 {% macro stage_pill() -%}
-{% if practice and makeup and makeup.ready %}<span class="pill accent">Practice · Got it clears 1 extra</span>
-{% elif practice and makeup and makeup.possible and makeup.opens %}<span class="pill">Practice · make-up opens {{ makeup.opens|nice_date(true) }}</span>
-{% elif practice %}<span class="pill">Practice · doesn't count</span>
-{% elif overdue %}<span class="pill warn">{{ STAGE_TITLES[v.stage] }} · overdue</span>
+{% if practice %}<span class="pill">Practice · doesn't count</span>
+{% elif overdue %}<span class="pill warn">{{ STAGE_TITLES[v.stage] }} · late, counts through {{ open_until|nice_date(true) }}</span>
 {% else %}<span class="pill accent">{{ STAGE_TITLES[v.stage] }} · {{ stage_label|replace('Day ', 'day ')|replace('Week ', 'week ')|replace('Month ', 'month ') }}</span>{% endif %}
 {%- endmacro %}
 
