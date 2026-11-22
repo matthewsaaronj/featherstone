@@ -2,7 +2,7 @@
 # Featherstone — installer for a Mac.
 #
 # One command sets everything up (see INSTALL.md):
-#   curl -fsSL https://raw.githubusercontent.com/matthewsaaronj/scripture_memorization_agent/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/matthewsaaronj/featherstone/main/install.sh | bash
 #
 # What it does:
 #   1. downloads the app into ~/featherstone (or uses the folder it's run from)
@@ -20,7 +20,7 @@
 #   --dry-run          show what would happen, change nothing
 set -euo pipefail
 
-REPO_URL="https://github.com/matthewsaaronj/scripture_memorization_agent"
+REPO_URL="https://github.com/matthewsaaronj/featherstone"
 NAME="featherstone"
 PORT=5057
 HTTPS_PORT=8444

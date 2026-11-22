@@ -27,7 +27,7 @@ Featherstone isn't an App Store app. It runs on **your Mac**, and your **iPhone*
 2. Copy this whole line, paste it into the Terminal window (**⌘ Command + V**), and press **Return**:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/matthewsaaronj/scripture_memorization_agent/main/install.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/matthewsaaronj/featherstone/main/install.sh | bash
    ```
 
 3. Wait a minute or two while it works through 4 steps. Some things you might see:
