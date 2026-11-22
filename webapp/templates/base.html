@@ -1,0 +1,42 @@
+{% from "_icons.html" import icon %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}Featherstone{% endblock %}</title>
+  <meta name="theme-color" content="#F7F7F5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0F131A" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Featherstone">
+  <link rel="manifest" href="{{ url_for('main.manifest') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-180.png', v=2) }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='icons/icon-32.png', v=2) }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v=asset_version) }}">
+</head>
+<body>
+<div class="app {% block app_class %}{% endblock %}">
+  {% block header %}{% endblock %}
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}<div class="flashes" role="status">{% for cat, m in msgs %}<div class="flash {{ 'error' if cat == 'error' }}">{{ m }}</div>{% endfor %}</div>{% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+{% block tabbar %}
+<nav class="tabbar" aria-label="Main">
+  <div class="tabbar-inner">
+    <a class="tab {{ 'on' if tab == 'today' }}" href="{{ url_for('main.index') }}" {% if tab == 'today' %}aria-current="page"{% endif %}>{{ icon('today') }}Today</a>
+    <a class="tab {{ 'on' if tab == 'verses' }}" href="{{ url_for('main.verses') }}" {% if tab == 'verses' %}aria-current="page"{% endif %}>{{ icon('verses') }}Verses</a>
+    <a class="tab {{ 'on' if tab == 'add' }}" href="{{ url_for('main.add') }}" {% if tab == 'add' %}aria-current="page"{% endif %}>{{ icon('add') }}Add</a>
+    <a class="tab {{ 'on' if tab == 'settings' }}" href="{{ url_for('main.settings') }}" {% if tab == 'settings' %}aria-current="page"{% endif %}>{{ icon('settings') }}Settings</a>
+  </div>
+</nav>
+{% endblock %}
+<script src="{{ url_for('static', filename='js/refmask.js', v=asset_version) }}" defer></script>
+<script src="{{ url_for('static', filename='js/push.js', v=asset_version) }}" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

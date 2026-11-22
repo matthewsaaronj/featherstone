@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Done · Featherstone{% endblock %}
+{% block content %}
+<main class="content done">
+  <div class="done-mark" aria-hidden="true">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+  </div>
+  <h1 class="title" style="text-align: center;">{% if practice_set %}Practice finished{% elif s.done %}All done for today{% else %}Nothing to review{% endif %}</h1>
+  {% if s.done %}
+  <p class="done-sub">{{ s.done }} verse{{ 's' if s.done != 1 }} reviewed</p>
+  <div class="tally">
+    <div><strong class="got">{{ s.results.got }}</strong><span>Got it</span></div>
+    <div><strong class="shaky">{{ s.results.shaky }}</strong><span>Shaky</span></div>
+    <div><strong class="missed">{{ s.results.missed }}</strong><span>Missed</span></div>
+  </div>
+  {% if s.made_up %}<p class="done-note">Made up {{ s.made_up }} missed review{{ 's' if s.made_up != 1 }}.</p>{% endif %}
+  {% if s.results.missed and not practice_set %}<p class="done-note">Missed verses come back tomorrow for practice, and their stage gets one extra review.</p>{% endif %}
+  {% else %}
+  <p class="done-sub">Everything due today is finished.</p>
+  {% endif %}
+  <a class="btn" href="{{ url_for('main.index') }}">Back to Today</a>
+</main>
+{% endblock %}

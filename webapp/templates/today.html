@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_rows.html" import verse_row with context %}
+{% block title %}Today · Featherstone{% endblock %}
+{% block header %}
+<header class="top">
+  <p class="eyebrow">{{ today.strftime('%A, %B %-d') }}</p>
+  <div class="title-row">
+    <h1 class="title">Today</h1>
+    <p class="title-meta">{% if n_due %}<strong>{{ n_due }} due</strong>{% if n_overdue %} · {{ n_overdue }} overdue{% endif %}{% else %}All caught up{% endif %}</p>
+  </div>
+  <nav class="chips" aria-label="Stages">
+    <a class="chip on" href="{{ url_for('main.index') }}" aria-current="page"><span class="n">{{ n_due }}</span><span class="t">Today</span></a>
+    {% for st in ['daily', 'weekly', 'monthly', 'mastered', 'backlog'] %}
+    <a class="chip {{ 'zero' if not counts[st] }}" href="{{ url_for('main.stage', stage=st) }}"><span class="n">{{ counts[st] }}</span><span class="t">{{ STAGE_TITLES[st] }}</span></a>
+    {% endfor %}
+  </nav>
+</header>
+{% endblock %}
+{% block content %}
+<main class="content">
+  {% if overdue %}
+  <section class="group">
+    <h2 class="eyebrow warn">Overdue</h2>
+    <div class="list">{% for it in overdue %}{{ verse_row(it, show_stage=true) }}{% endfor %}</div>
+  </section>
+  {% endif %}
+
+  {% for st in ['daily', 'weekly', 'monthly', 'mastered'] %}{% if due_by_stage[st] %}
+  <section class="group">
+    <h2 class="eyebrow">{{ STAGE_TITLES[st] }}</h2>
+    <div class="list">{% for it in due_by_stage[st] %}{{ verse_row(it) }}{% endfor %}</div>
+  </section>
+  {% endif %}{% endfor %}
+
+  {% if practice %}
+  <section class="group">
+    <h2 class="eyebrow">Practice retries</h2>
+    <div class="list">{% for it in practice %}{{ verse_row(it, show_stage=true) }}{% endfor %}</div>
+  </section>
+  {% endif %}
+
+  {% if not n_due and not practice %}
+  <div class="empty">
+    <p class="serif">Nothing due today</p>
+    <p>{% if counts['backlog'] %}{{ counts['backlog'] }} in your Backlog.{% else %}Your Backlog is empty — add a verse to keep the rotation going.{% endif %}</p>
+  </div>
+  {% endif %}
+</main>
+{% if n_due %}
+<div class="cta"><a class="btn" href="{{ url_for('main.review', start=1) }}">Begin review · {{ n_due }} verse{{ 's' if n_due != 1 }}</a></div>
+{% elif practice %}
+<div class="cta"><a class="btn secondary" href="{{ url_for('main.review', start=1) }}">Practice · {{ practice|length }} verse{{ 's' if practice|length != 1 }}</a></div>
+{% endif %}
+{% endblock %}

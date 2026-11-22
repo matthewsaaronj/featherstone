@@ -59,6 +59,7 @@ BIBLE_API_BASE = "https://bible-api.com/"
 
 # ----- Auto-add frequency gate -----
 AUTO_ADD_EVERY_N_DAYS = 0  # set to 1 for daily, 7 for weekly, 0 to disable gate
+CHATGPT_FALLBACK = True     # config auto_add.chatgpt_fallback; False = never ask ChatGPT when Backlog is empty
 
 
 # ====================================================================
@@ -220,6 +221,8 @@ def apply_config(cfg: dict):
 
     global AUTO_ADD_EVERY_N_DAYS
     AUTO_ADD_EVERY_N_DAYS = int(cfg.get("auto_add", {}).get("every_n_days", DEFAULT_CONFIG["auto_add"]["every_n_days"]))
+    global CHATGPT_FALLBACK
+    CHATGPT_FALLBACK = bool(cfg.get("auto_add", {}).get("chatgpt_fallback", True))
 
     # Verse Obfuscation
     global OBF_ENABLED, OBF_SEPARATOR, OBF_SCHEDULE, OBF_MIN_LEN, OBF_KEEP_FL, OBF_RESPECT_PUNCT
@@ -300,7 +303,20 @@ def list_reminders(list_name: str):
             set AppleScript's text item delimiters to ""
           end if
 
-          set out to out & rid & "␞" & rname & "␞" & rbody & "␞" & rcompleted & "␞" & rdue & linefeed
+          -- completion_date as YYYY-MM-DD
+          if completion date of r is missing value then
+            set rcompdate to ""
+          else
+            set cd to completion date of r
+            set cy to (year of cd) as text
+            set cm to ((month of cd) as integer) as text
+            if length of cm is 1 then set cm to "0" & cm
+            set cday to (day of cd) as text
+            if length of cday is 1 then set cday to "0" & cday
+            set rcompdate to cy & "-" & cm & "-" & cday
+          end if
+
+          set out to out & rid & "␞" & rname & "␞" & rbody & "␞" & rcompleted & "␞" & rdue & "␞" & rcompdate & linefeed
         end repeat
       end tell
       return out
@@ -312,15 +328,16 @@ def list_reminders(list_name: str):
         if not line.strip():
             continue
         parts = line.split("␞")
-        if len(parts) != 5:
+        if len(parts) != 6:
             continue  # defensive
-        rid, name, body, completed, due = parts
+        rid, name, body, completed, due, completion_date = parts
         items.append({
             "id": rid,
             "name": name,
             "body": body,
             "completed": (completed.strip().lower() == "true"),
-            "due": due
+            "due": due,
+            "completion_date": completion_date.strip(),
         })
     return items
 
@@ -1040,25 +1057,16 @@ def maybe_add_new_verse_from_backlog(topic: Optional[str] = None) -> Optional[st
         r = backlog_items[0]
         title = r["name"].strip()
 
-        # Create in Daily (preserve any existing body text from Backlog)
-        create_script = r'''
-        on run argv
-          set listName to item 1 of argv
-          set theTitle to item 2 of argv
-          set theBody to item 3 of argv
-          tell application "Reminders"
-            set theList to first list whose name is listName
-            make new reminder at end of reminders of theList with properties {name:theTitle, body:theBody}
-          end tell
-        end run
-        '''
-        run_as(create_script, DAILY, title, r.get("body",""))
+        # Move to Daily (same reminder, so notes and tags carry over)
+        moved_id = move_by_title(BACKLOG, DAILY, title)
+        if moved_id:
+            mark_incomplete_by_id(DAILY, moved_id)
 
-        # Delete from Backlog
-        delete_by_id(BACKLOG, r["id"])
-
-        # Due next morning at configured time + init cadence + ensure notes + SID
-        set_due_next_morning_8am(DAILY, title)
+        # Due today at configured time if it hasn't passed yet, else tomorrow
+        items_now = list_reminders(DAILY)
+        new_r = next((x for x in items_now if x["name"].strip() == title), None)
+        if new_r:
+            set_due_date(DAILY, new_r["id"], _next_due_time_from_now(now))
         _get_or_init_record(title, anchor_weekday=now.weekday())
         ensure_notes_for(DAILY, title)
         _ensure_sid_for_title(DAILY, title)
@@ -1067,13 +1075,17 @@ def maybe_add_new_verse_from_backlog(topic: Optional[str] = None) -> Optional[st
         _set_last_auto_added_date(now)
 
         # CSV log
-        next_due = next_morning_8am(now).strftime('%Y-%m-%d %H:%M')
+        next_due = _next_due_time_from_now(now).strftime('%Y-%m-%d %H:%M')
         _append_csv_event(title, "daily", "moved-from-backlog", next_due)
 
         print(f"New verse moved from Backlog → Daily (next review at {next_due.split(' ')[1]}): {title}")
         return title
 
     # -------- Pass 4: Backlog empty → ChatGPT (still gated) --------
+    if not CHATGPT_FALLBACK:
+        print("[new-verse] Backlog empty; ChatGPT fallback is off. Add a verse to the Backlog.")
+        _append_log("[new-verse] Backlog empty; chatgpt_fallback off, nothing added")
+        return None
     if not _chatgpt_allowed_today(now):
         print("[new-verse] Backlog empty, but frequency gate prevents auto-add today.")
         return None
@@ -1103,7 +1115,12 @@ def maybe_add_new_verse_from_backlog(topic: Optional[str] = None) -> Optional[st
     '''
     run_as(create_script, DAILY, candidate)
 
-    set_due_next_morning_8am(DAILY, candidate)
+    # Due today at configured time if it hasn't passed yet, else tomorrow
+    items_now = list_reminders(DAILY)
+    new_r = next((x for x in items_now if x["name"].strip() == candidate), None)
+    next_due_dt = _next_due_time_from_now(now)
+    if new_r:
+        set_due_date(DAILY, new_r["id"], next_due_dt)
     _get_or_init_record(candidate, anchor_weekday=now.weekday())
     ensure_notes_for(DAILY, candidate)
     _ensure_sid_for_title(DAILY, candidate)
@@ -1112,7 +1129,7 @@ def maybe_add_new_verse_from_backlog(topic: Optional[str] = None) -> Optional[st
     _set_last_auto_added_date(now)
 
     # CSV log
-    next_due = next_morning_8am(now).strftime('%Y-%m-%d %H:%M')
+    next_due = next_due_dt.strftime('%Y-%m-%d %H:%M')
     _append_csv_event(candidate, "daily", "chatgpt-added", next_due)
 
     print(f"[ChatGPT] Added new verse to Daily (next review at {next_due.split(' ')[1]}): {candidate}")
@@ -1188,7 +1205,7 @@ def _set_last_auto_added_date(d: datetime) -> None:
 
 def _chatgpt_allowed_today(now: datetime) -> bool:
     if AUTO_ADD_EVERY_N_DAYS <= 0:
-        return True
+        return False  # 0 = disabled
     last = _get_last_auto_added_date()
     if not last:
         return True
@@ -1225,6 +1242,14 @@ def next_same_weekday_in_n_months_8am(anchor_weekday: int, base: datetime, month
 def next_morning_8am(base: datetime) -> datetime:
     # now honors configured due time
     return _at_due_time(base + timedelta(days=1))
+
+
+def _next_due_time_from_now(now: datetime) -> datetime:
+    """Return today at due_time if it hasn't passed yet, else tomorrow at due_time."""
+    today_due = _at_due_time(now)
+    if today_due > now:
+        return today_due
+    return _at_due_time(now + timedelta(days=1))
 
 
 def next_same_weekday_8am(anchor_weekday: int, base: datetime) -> datetime:
@@ -1327,8 +1352,9 @@ def _ensure_due_for_list(list_name: str, item: dict, now: Optional[datetime] = N
 # ====================================================================
 def move_by_title(from_list: str, to_list: str, title: str) -> Optional[str]:
     """
-    Move reminder by exact title from one list to another, preserving RAW body (newlines).
-    Returns the NEW reminder ID in the destination list (or None on failure).
+    Move reminder by exact title from one list to another. It stays the same
+    reminder, so notes and tags carry over and completed state is unchanged.
+    Returns the reminder ID (or None if no match).
     """
     wanted = title.strip().lower()
     items = list_reminders(from_list)
@@ -1336,27 +1362,20 @@ def move_by_title(from_list: str, to_list: str, title: str) -> Optional[str]:
     if not match:
         return None
 
-    # Fetch RAW body from source (preserves paragraph breaks)
-    raw_body = get_body_by_id_raw(from_list, match["id"])
-
-    # Create in destination and return its ID
-    create_script = r'''
+    # Reminders doesn't compile the English "move" term, so use the raw event
+    move_script = r'''
     on run argv
-      set listName to item 1 of argv
-      set theTitle to item 2 of argv
-      set theBody to item 3 of argv
+      set theId to item 1 of argv
+      set listName to item 2 of argv
       tell application "Reminders"
+        set theRem to reminder id theId
         set theList to first list whose name is listName
-        set newRem to make new reminder at end of reminders of theList with properties {name:theTitle, body:theBody}
-        return (id of newRem as text)
+        «event coremove» theRem given «class insh»:theList
       end tell
     end run
     '''
-    new_id = run_as(create_script, to_list, match["name"], raw_body)
-
-    # delete original by ID (robust)
-    delete_by_id(from_list, match["id"])
-    return new_id if (new_id and new_id.strip()) else None
+    run_as(move_script, match["id"], to_list)
+    return match["id"]
 
 
 
@@ -1376,7 +1395,13 @@ def advance_on_complete():
         if rec.get("stage") not in ("weekly", "monthly", "mastered"):
             dcount = int(rec.get("daily_count", 0))
             if dcount + 1 < DAILY_REPEATS:
-                due = next_morning_8am(now)  # uses configured time
+                # Base rescheduling on completion date so midnight cron runs don't add an extra day
+                comp_str = r.get("completion_date", "").strip()
+                try:
+                    base = datetime.strptime(comp_str, "%Y-%m-%d") if comp_str else now
+                except Exception:
+                    base = now
+                due = next_morning_8am(base)
                 set_due_date(DAILY, r["id"], due)
                 mark_incomplete_by_id(DAILY, r["id"])
                 _update_record(title, stage="daily", daily_count=dcount + 1, anchor_weekday=anchor)
@@ -2397,6 +2422,17 @@ def run_daily(topic_arg: Optional[str] = None):
         _append_log("run-daily: reset_backlog_items OK")
     except Exception as e:
         _append_log(f"run-daily: reset_backlog_items ERROR: {e}")
+
+    # Backlog items should never carry a due date (AppleScript can't clear dates; tools/clear_dates uses EventKit)
+    try:
+        tool = os.path.join(SCRIPT_DIR, "tools", "clear_dates")
+        if os.path.exists(tool):
+            res = subprocess.run([tool, BACKLOG], capture_output=True, text=True, timeout=60)
+            _append_log("run-daily: clear_backlog_dates " + (res.stdout.strip().splitlines() or ["(no output)"])[-1])
+        else:
+            _append_log("run-daily: clear_backlog_dates SKIPPED (tools/clear_dates missing)")
+    except Exception as e:
+        _append_log(f"run-daily: clear_backlog_dates ERROR: {e}")
 
     try:
         advance_on_complete()

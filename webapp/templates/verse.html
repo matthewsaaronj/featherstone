@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ v.display_ref }} · Featherstone{% endblock %}
+{% block header %}
+<header style="padding: calc(12px + env(safe-area-inset-top)) 16px 0;">
+  <a class="back" href="{{ url_for('main.stage', stage=v.stage) }}">{{ icon('back', 20) }}{{ STAGE_TITLES[v.stage] }}</a>
+</header>
+{% endblock %}
+{% block content %}
+<main class="content" style="padding-top: 4px;">
+  <div class="verse-head">
+    <h1>{{ v.display_ref }}</h1>
+    <p>{% if s %}{{ STAGE_TITLES[v.stage] }} · {{ label }}{% else %}In Backlog{% if v.backlog_pos %} · waiting to start{% endif %}{% endif %}</p>
+  </div>
+
+  {% if v.stage != 'backlog' %}
+  <section class="card" aria-label="Progress through stages">
+    <div class="track">
+      {% for p in progress %}
+      <div class="seg {{ p.state }}">
+        <div class="bar"><span style="width: {{ p.pct }}%"></span></div>
+        <span class="name">{{ p.name }}</span>
+        <span class="num">{% if p.total %}{{ p.done }} / {{ p.total - (p.extra or 0) }}{% if p.extra %} +{{ p.extra }}{% endif %}{% elif p.state == 'current' %}{{ p.done }} checks{% else %}—{% endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <dl class="facts">
+      <div><dt>{{ 'Due' if overdue else 'Next review' }}</dt><dd class="{{ 'warn' if overdue }}">{{ v.due_date|nice_date(true) }}{% if v.due_date == today %} (today){% endif %}</dd></div>
+      <div><dt>Rhythm</dt><dd>{{ rhythm or '—' }}</dd></div>
+      <div><dt>Started</dt><dd>{{ v.start_date|nice_date if v.start_date else '—' }}</dd></div>
+      <div><dt>Extra reviews</dt><dd>{{ v.extra }}</dd></div>
+    </dl>
+  </section>
+  <form method="post" action="{{ url_for('main.practice') }}">
+    <input type="hidden" name="verse" value="{{ v.id }}">
+    <button class="btn secondary" type="submit">{{ 'Review now' if v.due_date and v.due_date <= today else 'Practice now' }}</button>
+  </form>
+  {% if makeup.ready %}<p class="row-sub" style="margin: -10px 8px 0;">A practice “Got it” today makes up 1 of its {{ v.extra }} extra review{{ 's' if v.extra != 1 }}.</p>
+  {% elif makeup.possible and makeup.opens %}<p class="row-sub" style="margin: -10px 8px 0;">Practice can make up an extra review from {{ makeup.opens|nice_date(true) }}.</p>{% endif %}
+  {% else %}
+  <form method="post" action="{{ url_for('main.verse_start', vid=v.id) }}" class="actions">
+    <button class="btn" type="submit">Start in Daily today</button>
+  </form>
+  {% endif %}
+
+  <article class="group" style="gap: 10px;">
+    <div class="section-head" style="padding: 0 4px;">
+      <h2 class="eyebrow">Text</h2>
+      {% if v.text %}
+        {% if v.manual_override %}<span class="source manual">Your own text</span>
+        {% elif v.text_source == 'import' %}<span class="source manual">Imported · not yet checked</span>
+        {% else %}<span class="source">{{ icon('check', 14) }}Verified text · {{ v.text_source }}</span>{% endif %}
+      {% endif %}
+    </div>
+    {% if v.pending_text %}
+    <div class="card pending">
+      <p class="label" style="margin: 0 0 6px;">The source's text has changed</p>
+      <p class="row-sub" style="margin: 0 0 10px;">The daily check found a different version at the source. Yours is below; here's theirs:</p>
+      <div class="scripture" style="font-size: 16px;">{% for p in v.pending_text.split('\n\n') %}<p>{{ p }}</p>{% endfor %}</div>
+      <form method="post" action="{{ url_for('main.verse_pending', vid=v.id) }}" class="actions" style="margin-top: 12px;">
+        <button class="btn small" type="submit" name="action" value="accept">Use the new text</button>
+        <button class="btn ghost small" type="submit" name="action" value="dismiss">Keep mine</button>
+      </form>
+    </div>
+    {% endif %}
+    <div class="card scripture">
+      {% if v.text %}
+        {% set paras = v.text.split('\n\n') %}
+        {% set nums = (v.verse_end - v.verse_start + 1) if v.verse_end else 0 %}
+        {% for para in paras %}<p>{% if nums == paras|length and nums > 1 %}<sup>{{ v.verse_start + loop.index0 }}</sup>{% endif %}{{ para }}</p>{% endfor %}
+      {% else %}
+        <p style="font-family: var(--sans); font-size: 15px; color: var(--muted);">No text yet. Fetch it or paste your own below.</p>
+      {% endif %}
+    </div>
+    <details class="edit" style="padding: 0 4px;">
+      <summary>Check or edit text</summary>
+      <div class="stack" style="padding-top: 8px;">
+        <form method="post" action="{{ url_for('main.verse_text', vid=v.id) }}">
+          <input type="hidden" name="action" value="refetch">
+          <button class="btn secondary small" type="submit">Check against the source</button>
+        </form>
+        <form method="post" action="{{ url_for('main.verse_text', vid=v.id) }}" class="stack">
+          <input type="hidden" name="action" value="save">
+          <div class="field">
+            <label for="text">Your text</label>
+            <textarea class="input" id="text" name="text">{{ v.text or '' }}</textarea>
+            <p class="help">Saved text is marked as yours and won't be replaced by the source. Separate verses with a blank line.</p>
+          </div>
+          <button class="btn small" type="submit">Save text</button>
+        </form>
+      </div>
+    </details>
+  </article>
+
+  {% if reviews %}
+  <section class="group">
+    <h2 class="eyebrow">Recent reviews</h2>
+    <div class="list">
+      {% for r in reviews %}
+      <div class="row" style="min-height: 56px;">
+        <span class="row-main">
+          <span style="font-size: 15px; font-weight: 500;">{{ (r.slot_date or r.reviewed_at.date())|nice_date }} · {{ STAGE_TITLES[r.stage] }}{% if r.position is not none %} {{ r.position + 1 }}{% endif %}</span>
+          <span class="row-sub">{% if r.mode == 'manual' %}Moved by hand{% if r.answer in STAGE_TITLES %} from {{ STAGE_TITLES[r.answer] }}{% endif %}{% elif r.made_up %}Practice · made up a missed review{% elif r.practice %}Practice{% elif r.mode == 'text_to_ref' %}Text → reference{% elif r.mode == 'ref_to_text' %}Reference → text{% elif r.mode == 'import' %}Imported{% else %}Not reviewed in time{% endif %}</span>
+        </span>
+        <span class="result {{ r.result }}">{{ {'got': 'Got it', 'shaky': 'Shaky', 'missed': 'Missed', 'skipped': 'Skipped', 'moved': 'To ' ~ STAGE_TITLES[r.stage]}[r.result] }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <details class="edit card" style="padding: 4px 16px;">
+    <summary>Move or adjust</summary>
+    <form method="post" action="{{ url_for('main.verse_move', vid=v.id) }}" class="stack" style="padding: 4px 0 16px;">
+      <div class="field">
+        <label for="move-stage">Stage</label>
+        <select class="input" id="move-stage" name="stage">
+          {% for st in ['backlog', 'daily', 'weekly', 'monthly', 'mastered'] %}<option value="{{ st }}" {% if st == v.stage %}selected{% endif %}>{{ STAGE_TITLES[st] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="move-done">Reviews already done in that stage</label>
+        <input class="input num" type="number" inputmode="numeric" min="0" id="move-done" name="done" value="{{ v.done if v.is_active else 0 }}">
+        <p class="help">The verse keeps its {{ 'weekday and day of the month' if v.anchor_weekday is not none else 'rhythm, starting from today' }}. Its next review is the first matching date from today. Backlog puts it at the front of the line.</p>
+      </div>
+      <button class="btn small" type="submit">Move</button>
+    </form>
+  </details>
+
+  <div class="meta-foot">
+    <span class="mono" title="{{ v.id }}">ID {{ v.id[:8] }}</span>
+    {% if v.stage == 'backlog' %}
+    <form method="post" action="{{ url_for('main.verse_delete', vid=v.id) }}" onsubmit="return confirm('Remove {{ v.display_ref }} from the Backlog?');">
+      <button class="btn danger small" type="submit">Remove from Backlog</button>
+    </form>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

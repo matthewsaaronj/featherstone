@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_quiz.html" import quiz_header, stage_pill, scripture_text, grade_buttons with context %}
+{% block title %}Review · Featherstone{% endblock %}
+{% block app_class %}quiz{% endblock %}
+{% block header %}{{ quiz_header() }}{% endblock %}
+{% block tabbar %}{% endblock %}
+{% block content %}
+<main class="content quiz-body">
+  {% if mode == 'text_to_ref' %}
+  <div class="quiz-top">
+    <span class="eyebrow">Which verse is this?</span>
+    {{ stage_pill() }}
+  </div>
+  <article class="card scripture quiz-card">{{ scripture_text(v, numbers=false) }}</article>
+
+  {% if style == 'choice' and options %}
+  <form method="post" action="{{ url_for('main.review_check', vid=v.id) }}" class="stack quiz-form">
+    <input type="hidden" name="style" value="choice">
+    <fieldset class="choices">
+      <legend class="label">Choose the reference</legend>
+      {% for o in options %}
+      <button class="choice" type="submit" name="answer" value="{{ o }}">{{ o.display }}</button>
+      {% endfor %}
+    </fieldset>
+    <div class="quiz-actions">
+      <button class="btn ghost" type="submit" name="gave_up" value="1">I don't know — show me</button>
+      <a class="switch-style" href="{{ url_for('main.review', answer='type') }}">Type it instead</a>
+    </div>
+  </form>
+  {% else %}
+  <form method="post" action="{{ url_for('main.review_check', vid=v.id) }}" class="stack quiz-form">
+    <input type="hidden" name="style" value="type">
+    <div class="field">
+      <label for="answer">Reference</label>
+      <input class="input answer" id="answer" name="answer" list="books" data-refmask autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" placeholder="Alma 34:14–15" autofocus>
+      <datalist id="books">{% for b in books %}<option value="{{ b }} ">{% endfor %}</datalist>
+      <p class="help">Just use spaces — the “:” and “–” fill in as you type. “D&amp;C” and “2 Ne” work too.</p>
+    </div>
+    <div class="quiz-actions">
+      <button class="btn" type="submit">Check</button>
+      <button class="btn ghost" type="submit" name="gave_up" value="1" formnovalidate>I don't know — show me</button>
+      {% if v.ref %}<a class="switch-style" href="{{ url_for('main.review', answer='choice') }}">Show choices instead</a>{% endif %}
+    </div>
+  </form>
+  {% endif %}
+
+  {% else %}
+  <div class="quiz-top">
+    <span class="eyebrow">Recite the verse</span>
+    {{ stage_pill() }}
+  </div>
+  <h1 class="quiz-ref">{{ v.display_ref }}</h1>
+
+  <input type="checkbox" id="reveal" class="reveal-toggle">
+  <article class="card quiz-card hint-card">
+    {% if tokens %}
+    <div class="scripture hint-text">{% for t in tokens %}{% if t.hidden %}<span class="w">{{ t.text }}</span>{% else %}{{ t.text }}{% endif %}{% endfor %}</div>
+    {% set hidden = tokens|selectattr('hidden')|list|length %}
+    {% set words = tokens|selectattr('is_word')|list|length %}
+    <div class="hint-foot">
+      <span class="row-sub">{% if hidden %}{{ (100 * hidden / words)|round|int }}% of words hidden{% else %}Full text while you learn it{% endif %}</span>
+      {% if hidden %}<label for="reveal" class="btn secondary small"><span class="when-hidden">Show full verse</span><span class="when-shown">Hide again</span></label>{% endif %}
+    </div>
+    {% else %}
+    <p class="recite-note when-hidden">{% if v.text %}Recite it from memory, then check yourself.{% else %}No text saved for this verse yet.{% endif %}</p>
+    {% if v.text %}<div class="scripture full-text when-shown">{{ scripture_text(v) }}</div>
+    <div class="hint-foot"><span></span><label for="reveal" class="btn secondary small"><span class="when-hidden">Show verse</span><span class="when-shown">Hide again</span></label></div>{% endif %}
+    {% endif %}
+  </article>
+
+  <div class="quiz-grade">
+    <p class="grade-q">How did you do?</p>
+    {{ grade_buttons('ref_to_text') }}
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('main.review_skip', vid=v.id) }}" class="skip">
+    <button class="btn ghost small" type="submit">Skip for now</button>
+  </form>
+</main>
+{% endblock %}

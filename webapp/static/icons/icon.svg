@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- App icon: a fanned stack of 3×5 index cards. PNGs are made by scripts/make_icon.py. -->
+  <rect width="100" height="100" fill="#1C2A44"/>
+  <rect x="24" y="30" width="52" height="34" rx="2.5" fill="#B9C6D8" transform="rotate(-10 50 47)"/>
+  <rect x="24" y="32" width="52" height="34" rx="2.5" fill="#DCE3EC" transform="rotate(-4 50 49)"/>
+  <rect x="24" y="36" width="52" height="34" rx="2.5" fill="#F7F3EA"/>
+  <line x1="24" y1="44" x2="76" y2="44" stroke="#C8574A" stroke-width="1.4"/>
+  <g stroke="#9DB7D6" stroke-width="1">
+    <line x1="24" y1="50" x2="76" y2="50"/>
+    <line x1="24" y1="55.5" x2="76" y2="55.5"/>
+    <line x1="24" y1="61" x2="76" y2="61"/>
+  </g>
+</svg>

@@ -17,3 +17,14 @@ __pycache__/
 
 # Claude Code
 .claude/
+
+# Local snapshots and scratch scripts
+backups/
+tmp/
+
+# Compiled helper (build with: swiftc tools/clear_dates.swift -o tools/clear_dates)
+tools/clear_dates
+
+# Web app secrets (copy .env.example to .env)
+.env
+.pytest_cache/

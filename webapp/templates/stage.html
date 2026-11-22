@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_rows.html" import verse_row with context %}
+{% block title %}{{ STAGE_TITLES[stage] }} · Featherstone{% endblock %}
+{% block header %}
+<header class="top">
+  <p class="eyebrow">Verses</p>
+  <div class="title-row">
+    <h1 class="title">{{ STAGE_TITLES[stage] }}</h1>
+    <p class="title-meta"><strong>{{ items|length }}</strong> verse{{ 's' if items|length != 1 }}</p>
+  </div>
+  <nav class="chips" aria-label="Stages">
+    <a class="chip" href="{{ url_for('main.index') }}"><span class="n">{{ n_due }}</span><span class="t">Today</span></a>
+    {% for st in ['daily', 'weekly', 'monthly', 'mastered', 'backlog'] %}
+    <a class="chip {{ 'on' if st == stage }} {{ 'zero' if not counts[st] }}" href="{{ url_for('main.stage', stage=st) }}" {% if st == stage %}aria-current="page"{% endif %}><span class="n">{{ counts[st] }}</span><span class="t">{{ STAGE_TITLES[st] }}</span></a>
+    {% endfor %}
+  </nav>
+</header>
+{% endblock %}
+{% block content %}
+<main class="content">
+  {% if items %}
+  <div class="list">{% for it in items %}{{ verse_row(it) }}{% endfor %}</div>
+  {% if stage != 'backlog' %}
+  <form method="post" action="{{ url_for('main.practice') }}">
+    <input type="hidden" name="stage" value="{{ stage }}">
+    <button class="btn secondary" type="submit">Practice all {{ items|length }}</button>
+  </form>
+  <p class="row-sub" style="margin: -10px 8px 0;">Practice doesn't count toward a stage, except for verses due today.{% if stage in ('daily', 'weekly') %} A “Got it” can make up one missed review per verse per day{% if stage == 'weekly' %}, from 3 days after the miss{% endif %}.{% endif %}</p>
+  {% endif %}
+  {% if stage == 'backlog' %}<p class="row-sub" style="margin: 0 8px;">The top verse moves into Daily on the next auto-add day. Open a verse to start it now.</p>{% endif %}
+  {% else %}
+  <div class="empty">
+    <p class="serif">No verses in {{ STAGE_TITLES[stage] }}</p>
+    <p>{% if stage == 'backlog' %}<a href="{{ url_for('main.add') }}">Add a verse</a> to queue it up.{% else %}Verses arrive here as they move through the program.{% endif %}</p>
+  </div>
+  {% endif %}
+</main>
+{% endblock %}

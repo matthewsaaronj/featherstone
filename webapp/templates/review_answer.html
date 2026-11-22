@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_quiz.html" import quiz_header, stage_pill, scripture_text, grade_buttons with context %}
+{% block title %}Review · Featherstone{% endblock %}
+{% block app_class %}quiz{% endblock %}
+{% block header %}{{ quiz_header() }}{% endblock %}
+{% block tabbar %}{% endblock %}
+{% block content %}
+<main class="content quiz-body">
+  <div class="quiz-top">
+    <span class="eyebrow">Which verse is this?</span>
+    {{ stage_pill() }}
+  </div>
+
+  {% set verdicts = {
+    'exact': ('ok', 'check', 'Correct'),
+    'overlap': ('warn', 'half', 'Close — right passage, different verses'),
+    'chapter': ('warn', 'half', 'Right chapter, wrong verses'),
+    'wrong': ('bad', 'x', 'Not quite'),
+  } %}
+  {% set tone, ic, words = verdicts[grade] %}
+  <div class="verdict {{ 'neutral' if gave_up else tone }}" role="status">
+    {% if not gave_up %}{{ icon(ic, 20) }}{% endif %}
+    <span>{{ 'Here it is' if gave_up else words }}</span>
+  </div>
+
+  <div class="answer-ref">
+    <h1 class="quiz-ref">{{ v.display_ref }}</h1>
+    {% if answer and grade != 'exact' %}<p class="row-sub">You {{ 'chose' if chose else 'wrote' }} <span class="your-answer">{{ parsed.display if parsed else answer }}</span></p>{% endif %}
+  </div>
+
+  <article class="card scripture quiz-card">{{ scripture_text(v) }}</article>
+
+  <div class="quiz-grade">
+    <p class="grade-q">{% if grade == 'exact' %}Count it?{% else %}How should this count?{% endif %}</p>
+    {{ grade_buttons('text_to_ref', suggested=suggested, answer=answer) }}
+  </div>
+</main>
+{% endblock %}

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Settings · Featherstone{% endblock %}
+{% block header %}
+<header class="top">
+  <p class="eyebrow">Program</p>
+  <h1 class="title">Settings</h1>
+</header>
+{% endblock %}
+{% block content %}
+<main class="content">
+<form method="post" class="stack" style="gap: 22px;">
+  <section class="group">
+    <h2 class="eyebrow">Notifications</h2>
+    <div class="list">
+      <div class="setting" id="push-panel" data-key="{{ vapid_key }}" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <p class="push-status" data-push-status role="status">Checking this device…</p>
+        <div class="actions">
+          <button class="btn small" type="button" data-push-on hidden>Turn on notifications</button>
+          <button class="btn secondary small" type="button" data-push-test hidden>Send a test</button>
+          <button class="btn ghost small" type="button" data-push-off hidden>Turn off on this device</button>
+        </div>
+        {% if devices %}<p class="row-sub" style="margin: 0;">{{ devices }} device{{ 's' if devices != 1 }} signed up.</p>{% endif %}
+      </div>
+      <div class="setting">
+        <span class="row-main"><label class="name" for="notify_enabled">Daily reminders</label><span class="row-sub">Only sent when verses are due</span></span>
+        <input class="toggle" type="checkbox" role="switch" id="notify_enabled" name="notify_enabled" {% if cfg.notify.enabled %}checked{% endif %}>
+      </div>
+      <div class="setting">
+        <span class="row-main"><label class="name" for="notify_morning">Morning reminder</label><span class="row-sub">How many verses are due</span></span>
+        <input class="input" style="width: 128px;" type="time" id="notify_morning" name="notify_morning" value="{{ cfg.notify.morning }}">
+      </div>
+      <div class="setting">
+        <span class="row-main"><label class="name" for="notify_evening_enabled">Evening nudge</label><span class="row-sub">Only if verses are still due</span></span>
+        <input class="toggle" type="checkbox" role="switch" id="notify_evening_enabled" name="notify_evening_enabled" {% if cfg.notify.evening_enabled %}checked{% endif %}>
+      </div>
+      <div class="setting">
+        <span class="row-main"><label class="name" for="notify_evening">Evening time</label></span>
+        <input class="input" style="width: 128px;" type="time" id="notify_evening" name="notify_evening" value="{{ cfg.notify.evening }}">
+      </div>
+    </div>
+  </section>
+
+  <section class="group">
+    <h2 class="eyebrow">Connections</h2>
+    <div class="list">
+      <div class="setting" style="flex-direction: column; align-items: stretch; gap: 8px;">
+        <label class="name" for="openai_key">OpenAI API key</label>
+        <input class="input" type="password" id="openai_key" name="openai_key" autocomplete="off" spellcheck="false"
+               placeholder="{{ 'Saved (' ~ openai_hint ~ ') — type to replace' if openai_hint else 'sk-…' }}">
+        <p class="help">For “Let AI pick by theme” and the empty-Backlog fallback. Optional.
+          {% if openai_source == 'env' %}Currently using the key from the .env file.{% elif openai_source == 'settings' %}Stored in this app's database on this Mac.{% endif %}</p>
+        {% if openai_source == 'settings' %}<label class="row-sub" style="display: flex; align-items: center; gap: 8px;"><input type="checkbox" name="openai_remove"> Remove the saved key</label>{% endif %}
+      </div>
+      <div class="setting" style="flex-direction: column; align-items: stretch; gap: 8px;">
+        <label class="name" for="push_contact">Notification contact</label>
+        <input class="input" id="push_contact" name="push_contact" value="{{ push_contact }}" autocomplete="off" spellcheck="false">
+        <p class="help">Phone push services require a contact for whoever runs the server, in case something goes wrong. It's never used to email you, and notifications don't depend on it. An email address or any web address you control works.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="group">
+    <h2 class="eyebrow">Adding verses</h2>
+    <div class="list">
+      <div class="setting">
+        <span class="row-main"><label class="name" for="every_n_days">Add a new verse every</label><span class="row-sub">Days between automatic adds. 0 turns it off.{% if last_auto_added %} Last added {{ last_auto_added }}.{% endif %}</span></span>
+        <input class="input num" type="number" inputmode="numeric" min="0" max="365" id="every_n_days" name="every_n_days" value="{{ cfg.auto_add.every_n_days }}">
+      </div>
+      <div class="setting">
+        <span class="row-main"><label class="name" for="chatgpt_fallback">AI picks when Backlog is empty</label><span class="row-sub">{% if ai_ready %}Uses the theme below.{% else %}Needs an OpenAI API key (Connections, above).{% endif %}</span></span>
+        <input class="toggle" type="checkbox" role="switch" id="chatgpt_fallback" name="chatgpt_fallback" {% if cfg.auto_add.chatgpt_fallback %}checked{% endif %}>
+      </div>
+      <div class="setting" style="flex-direction: column; align-items: stretch; gap: 8px;">
+        <label class="name" for="topic_default">Default theme</label>
+        <input class="input" id="topic_default" name="topic_default" value="{{ cfg.auto_add.topic_default }}">
+      </div>
+    </div>
+  </section>
+
+  <section class="group">
+    <h2 class="eyebrow">Cadence</h2>
+    <div class="list">
+      <div class="setting"><span class="row-main"><label class="name" for="daily_repeats">Daily reviews</label><span class="row-sub">Every day, starting the day a verse is added</span></span>
+        <input class="input num" type="number" inputmode="numeric" min="1" id="daily_repeats" name="daily_repeats" value="{{ cfg.cadence.daily_repeats }}"></div>
+      <div class="setting"><span class="row-main"><label class="name" for="weekly_repeats">Weekly reviews</label><span class="row-sub">Same weekday as the start date</span></span>
+        <input class="input num" type="number" inputmode="numeric" min="1" id="weekly_repeats" name="weekly_repeats" value="{{ cfg.cadence.weekly_repeats }}"></div>
+      <div class="setting"><span class="row-main"><label class="name" for="monthly_repeats">Monthly reviews</label><span class="row-sub">Same day of the month as the start date</span></span>
+        <input class="input num" type="number" inputmode="numeric" min="1" id="monthly_repeats" name="monthly_repeats" value="{{ cfg.cadence.monthly_repeats }}"></div>
+      <div class="setting"><span class="row-main"><label class="name" for="review_months">Mastered checks (months apart)</label><span class="row-sub">Separate with commas</span></span>
+        <input class="input" style="width: 120px; text-align: center;" id="review_months" name="review_months" value="{{ cfg.mastered.review_months|join(', ') }}"></div>
+      <div class="setting"><span class="row-main"><label class="name" for="yearly_interval">Then every (months)</label></span>
+        <input class="input num" type="number" inputmode="numeric" min="1" id="yearly_interval" name="yearly_interval" value="{{ cfg.mastered.yearly_interval }}"></div>
+    </div>
+  </section>
+
+  <section class="group">
+    <h2 class="eyebrow">Quiz</h2>
+    <div class="list">
+      <div class="setting">
+        <span class="row-main"><label class="name" for="answer_style">“Which verse is this?” answers</label><span class="row-sub">Multiple choice uses other passages from the same book</span></span>
+        <select class="input" style="width: auto; min-height: 44px; padding: 8px 12px; font-size: 15px;" id="answer_style" name="answer_style">
+          {% for val, lab in [('mix', 'Mix both'), ('type', 'Type it'), ('choice', 'Multiple choice')] %}<option value="{{ val }}" {% if cfg.quiz.answer_style == val %}selected{% endif %}>{{ lab }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="setting">
+        <span class="row-main"><label class="name" for="hints_enabled">Word hints</label><span class="row-sub">Hide more words as a verse moves through its stages</span></span>
+        <input class="toggle" type="checkbox" role="switch" id="hints_enabled" name="hints_enabled" {% if cfg.obfuscation.enabled %}checked{% endif %}>
+      </div>
+    </div>
+  </section>
+
+  <button class="btn" type="submit">Save settings</button>
+</form>
+</main>
+{% endblock %}

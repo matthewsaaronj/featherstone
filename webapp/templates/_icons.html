@@ -1,0 +1,16 @@
+{% macro icon(name, size=24) -%}
+<svg aria-hidden="true" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+{%- if name == 'today' -%}<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>
+{%- elif name == 'verses' -%}<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM13 4h5.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H13z"/>
+{%- elif name == 'add' -%}<circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/>
+{%- elif name == 'settings' -%}<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>
+{%- elif name == 'chev' -%}<path d="M9 6l6 6-6 6"/>
+{%- elif name == 'back' -%}<path d="M15 6l-6 6 6 6"/>
+{%- elif name == 'check' -%}<path d="M5 12.5l4.5 4.5L19 7.5"/>
+{%- elif name == 'close' -%}<path d="M6 6l12 12M18 6L6 18"/>
+{%- elif name == 'x' -%}<path d="M7 7l10 10M17 7L7 17"/>
+{%- elif name == 'half' -%}<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17" /><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/>
+{%- elif name == 'spark' -%}<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}

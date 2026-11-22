@@ -1,0 +1,20 @@
+{% from "_icons.html" import icon %}
+{% macro verse_row(it, show_stage=false) -%}
+<a class="row" href="{{ url_for('main.verse', vid=it.verse.id) }}">
+  <span class="row-main">
+    <span class="row-title">{{ it.verse.display_ref }}</span>
+    <span class="row-sub">
+      {%- if show_stage %}{{ STAGE_TITLES[it.verse.stage] }} · {% endif -%}
+      {{ it.label }}
+      {%- if it.practice %} · practice retry
+      {%- elif it.overdue %} · <span class="warn">due {{ it.due|nice_date }}</span>
+      {%- elif it.due and it.due > today %} · {{ it.due|nice_date(true) }}{% endif -%}
+    </span>
+  </span>
+  {%- if it.marker == 'dots' and it.dots|length <= 12 %}
+  <span class="dots" role="img" aria-label="{{ it.done }} of {{ it.total }} done">{% for d in it.dots %}<i class="{{ d }}"></i>{% endfor %}</span>
+  {%- elif it.marker %}
+  <span class="minibar" role="img" aria-label="{{ it.done }} of {{ it.total }} done"><span class="track"><span style="width: {{ it.pct }}%"></span></span><span class="num">{{ it.done }}/{{ it.total }}</span></span>
+  {%- else %}<span class="chev">{{ icon('chev', 16) }}</span>{% endif %}
+</a>
+{%- endmacro %}

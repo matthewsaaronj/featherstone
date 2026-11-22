@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Add a verse · Featherstone{% endblock %}
+{% block header %}
+<header class="top">
+  <p class="eyebrow">Backlog</p>
+  <h1 class="title">Add a verse</h1>
+</header>
+{% endblock %}
+{% block content %}
+<main class="content">
+  {% if error %}<div class="form-error" role="alert">{{ error }}</div>{% endif %}
+
+  {% if preview %}
+  <section class="group">
+    <h2 class="eyebrow">Suggested</h2>
+    <div class="card stack">
+      <h3 style="margin: 0; font-family: var(--serif); font-size: 24px;">{{ preview.ref }}</h3>
+      {% if preview.text %}<div class="scripture">{% for p in preview.text.split('\n\n') %}<p>{{ p }}</p>{% endfor %}</div>{% endif %}
+      <form method="post" class="actions">
+        <input type="hidden" name="reference" value="{{ preview.ref }}">
+        <input type="hidden" name="origin" value="ai">
+        <input type="hidden" name="topic" value="{{ topic }}">
+        <button class="btn" type="submit" name="action" value="add">Add to Backlog</button>
+        <button class="btn ghost" type="submit" name="action" value="suggest">Suggest another</button>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+
+  <form method="post" class="stack">
+    <div class="field">
+      <label for="reference">Reference</label>
+      <input class="input" id="reference" name="reference" data-refmask value="{{ reference if not preview }}" placeholder="Alma 34:14–15" autocomplete="off" autocapitalize="words">
+      <p class="help">One passage. Just use spaces — the “:” and “–” fill in as you type. The text is fetched for you.</p>
+    </div>
+    <button class="btn" type="submit" name="action" value="add">Add to Backlog</button>
+  </form>
+
+  <div class="or">or</div>
+
+  <form method="post" class="stack">
+    <div class="field">
+      <label for="topic">Let AI pick by theme</label>
+      <input class="input" id="topic" name="topic" value="{{ topic }}" placeholder="Faith, repentance, grace…">
+      <p class="help">{% if ai_ready %}You'll see the verse before it's added. Nothing already in your program is suggested.{% else %}Needs an OpenAI API key in Settings → Connections.{% endif %}</p>
+    </div>
+    <button class="btn secondary" type="submit" name="action" value="suggest" {% if not ai_ready %}disabled{% endif %}>{{ icon('spark', 20) }}Suggest a verse</button>
+  </form>
+</main>
+{% endblock %}

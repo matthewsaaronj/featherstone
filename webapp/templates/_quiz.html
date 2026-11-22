@@ -1,0 +1,32 @@
+{% from "_icons.html" import icon %}
+{% macro quiz_header() -%}
+<header class="quiz-head">
+  <a class="icon-btn" href="{{ url_for('main.index') }}" aria-label="End review">{{ icon('close', 22) }}</a>
+  <div class="progress" role="progressbar" aria-label="Review progress" aria-valuemin="0" aria-valuemax="{{ total }}" aria-valuenow="{{ position - 1 }}"><span style="width: {{ pct }}%"></span></div>
+  <span class="progress-num">{{ position }} of {{ total }}</span>
+</header>
+{%- endmacro %}
+
+{% macro stage_pill() -%}
+{% if practice and makeup and makeup.ready %}<span class="pill accent">Practice · Got it clears 1 extra</span>
+{% elif practice and makeup and makeup.possible and makeup.opens %}<span class="pill">Practice · make-up opens {{ makeup.opens|nice_date(true) }}</span>
+{% elif practice %}<span class="pill">Practice · doesn't count</span>
+{% elif overdue %}<span class="pill warn">{{ STAGE_TITLES[v.stage] }} · overdue</span>
+{% else %}<span class="pill accent">{{ STAGE_TITLES[v.stage] }} · {{ stage_label|replace('Day ', 'day ')|replace('Week ', 'week ')|replace('Month ', 'month ') }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro scripture_text(v, numbers=true) -%}
+{% set paras = v.text.split('\n\n') %}
+{% set n = (v.verse_end - v.verse_start + 1) if v.verse_end else 0 %}
+{% for para in paras %}<p>{% if numbers and n == paras|length and n > 1 %}<sup>{{ v.verse_start + loop.index0 }}</sup>{% endif %}{{ para }}</p>{% endfor %}
+{%- endmacro %}
+
+{% macro grade_buttons(mode, suggested=none, answer='') -%}
+<form method="post" action="{{ url_for('main.review_grade', vid=v.id) }}" class="grade">
+  <input type="hidden" name="mode" value="{{ mode }}">
+  {% if answer %}<input type="hidden" name="answer" value="{{ answer }}">{% endif %}
+  <button class="grade-btn missed {{ 'pick' if suggested == 'missed' }}" type="submit" name="result" value="missed">Missed</button>
+  <button class="grade-btn shaky {{ 'pick' if suggested == 'shaky' }}" type="submit" name="result" value="shaky">Shaky</button>
+  <button class="grade-btn got {{ 'pick' if suggested in (none, 'got') }}" type="submit" name="result" value="got">Got it</button>
+</form>
+{%- endmacro %}
