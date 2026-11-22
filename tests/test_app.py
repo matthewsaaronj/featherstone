@@ -285,3 +285,44 @@ def test_monthly_practice_never_makes_up(app):
     assert not svc.makeup_status(v, DAY).possible
     assert svc.record_review(v, "got", "text_to_ref", DAY) is False
     assert v.extra == 1
+
+
+# ---------- AI suggestions ----------
+
+def _fake_ai(monkeypatch, answers):
+    """AI stub that returns `answers` in order and records what it was told to avoid."""
+    calls = []
+    it = iter(answers)
+    def suggest(topic, exclusions, api_key=None):
+        calls.append(list(exclusions))
+        return next(it, None)
+    monkeypatch.setattr(svc.ai, "suggest", suggest)
+    monkeypatch.setattr(svc.ai, "available", lambda *a, **k: True)
+    return calls
+
+
+def test_suggest_another_never_repeats(app, monkeypatch):
+    # The AI keeps answering Alma 32:21 first; the second time it must be skipped.
+    calls = _fake_ai(monkeypatch, ["Alma 32:21", "Alma 32:21", "Ether 12:27"])
+    c = app.test_client()
+    first = c.post("/add", data={"action": "suggest", "topic": "faith"}).get_data(as_text=True)
+    assert "Alma 32:21" in first and 'name="seen" value="Alma 32:21"' in first
+    second = c.post("/add", data={"action": "suggest", "topic": "faith",
+                                  "seen": "Alma 32:21"}).get_data(as_text=True)
+    assert "Ether 12:27" in second
+    assert "Alma 32:21" in calls[1]            # told to avoid the earlier suggestion
+    assert 'value="Alma 32:21|Ether 12:27"' in second
+
+
+def test_suggestion_skips_verses_already_in_program(app, monkeypatch):
+    svc.add_verse("Alma 32:21")
+    _fake_ai(monkeypatch, ["Alma 32:21-22", "Moroni 10:4"])
+    page = app.test_client().post("/add", data={"action": "suggest", "topic": "faith"}).get_data(as_text=True)
+    assert "Moroni 10:4" in page and "overlaps" not in page
+
+
+def test_suggestion_gives_up_gracefully(app, monkeypatch):
+    _fake_ai(monkeypatch, ["Alma 32:21", "Alma 32:21", "Alma 32:21", "Alma 32:21"])
+    page = app.test_client().post("/add", data={"action": "suggest", "topic": "faith",
+                                                "seen": "Alma 32:21"}).get_data(as_text=True)
+    assert "find a new verse" in page

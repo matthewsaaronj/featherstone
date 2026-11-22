@@ -117,6 +117,35 @@ def add_verse(reference: str, *, origin: str = "manual", text: Optional[str] = N
     return res
 
 
+@dataclass
+class Suggestion:
+    ref: Optional[refs.Ref] = None
+    seen: list[str] = field(default_factory=list)   # every reference suggested this round
+    error: Optional[str] = None
+
+
+def suggest_verse(topic: Optional[str], seen: list[str], tries: int = 3) -> Suggestion:
+    """Ask the AI for a verse that isn't in the program and wasn't already
+    suggested this round ("Suggest another"). Retries when it repeats itself."""
+    out = Suggestion(seen=[s for s in seen if refs.parse(s)])
+    program = [x.reference for x in Verse.query.all()]
+    for _ in range(tries):
+        raw = ai.suggest(topic, program + out.seen, api_key=openai_key())
+        r = refs.parse(raw or "")
+        if r is None:
+            continue
+        repeat = any(refs.overlaps(r, refs.parse(s)) for s in out.seen)
+        if str(r) not in out.seen:
+            out.seen.append(str(r))
+        if repeat or find_overlap(r):
+            continue
+        out.ref = r
+        return out
+    out.error = ("Couldn't find a new verse for that theme just now. "
+                 "Try again, or try a different theme.")
+    return out
+
+
 def set_text(v: Verse, text: str, source: str, manual: bool = False) -> None:
     v.text = text.strip()
     v.text_sha = texts.sha1(v.text)

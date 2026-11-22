@@ -40,7 +40,7 @@ def _chat(prompt: str, api_key: Optional[str] = None) -> Optional[str]:
                 "model": MODEL,
                 "messages": [{"role": "system", "content": _SYSTEM},
                              {"role": "user", "content": prompt}],
-                "temperature": 0.5,
+                "temperature": 0.9,  # some variety, so "Suggest another" gets new verses
             }).encode("utf-8"),
         )
         with urllib.request.urlopen(req, timeout=20) as resp:
@@ -60,7 +60,7 @@ def extract_reference(s: str) -> Optional[str]:
 def suggest(topic: Optional[str], exclusions: list[str], api_key: Optional[str] = None) -> Optional[str]:
     avoid = ""
     if exclusions:
-        joined = "\n".join(f"- {t}" for t in exclusions[:50])
+        joined = "\n".join(f"- {t}" for t in exclusions[:150])
         avoid = ("Avoid suggesting any scripture that is the same as OR overlaps any of the "
                  "following references (treat overlaps as sharing any verse in common):\n"
                  f"{joined}\n\n")

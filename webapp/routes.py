@@ -121,7 +121,8 @@ def add():
     cfg = svc.get_settings()
     ctx = {"tab": "add", "ai_ready": ai.available(svc.openai_key()),
            "topic": request.values.get("topic", cfg["auto_add"].get("topic_default", "")),
-           "reference": request.values.get("reference", ""), "preview": None, "error": None}
+           "reference": request.values.get("reference", ""), "preview": None, "error": None,
+           "seen": ""}
 
     if request.method == "POST":
         action = request.form.get("action", "add")
@@ -129,20 +130,19 @@ def add():
             if not ai.available(svc.openai_key()):
                 ctx["error"] = "Add an OpenAI API key in Settings → Connections to use AI suggestions."
             else:
-                exclusions = [x.reference for x in Verse.query.all()]
-                sug = ai.suggest(ctx["topic"], exclusions, api_key=svc.openai_key())
-                if not sug or not refs.parse(sug):
-                    ctx["error"] = "No suggestion came back. Try again or a different theme."
+                # "seen" carries every verse already suggested this round, so
+                # "Suggest another" never offers the same one again.
+                seen = [s for s in (request.form.get("seen") or "").split("|") if s.strip()]
+                sug = svc.suggest_verse(ctx["topic"], seen)
+                ctx["seen"] = "|".join(sug.seen)
+                if sug.ref is None:
+                    ctx["error"] = sug.error
                 else:
-                    r = refs.parse(sug)
-                    clash = svc.find_overlap(r)
+                    r = sug.ref
                     ctx["reference"] = r.display
-                    if clash:
-                        ctx["error"] = f"The suggestion {r.display} overlaps {clash.display_ref}. Try again."
-                    else:
-                        fetched = texts.fetch(str(r))
-                        ctx["preview"] = {"ref": r.display, "text": fetched[0] if fetched else None,
-                                          "origin": "ai"}
+                    fetched = texts.fetch(str(r))
+                    ctx["preview"] = {"ref": r.display, "text": fetched[0] if fetched else None,
+                                      "origin": "ai"}
         else:
             res = svc.add_verse(request.form.get("reference", ""),
                                 origin=request.form.get("origin", "manual"))
