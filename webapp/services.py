@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -129,7 +130,10 @@ def suggest_verse(topic: Optional[str], seen: list[str], tries: int = 3) -> Sugg
     suggested this round ("Suggest another"). Retries when it repeats itself."""
     out = Suggestion(seen=[s for s in seen if refs.parse(s)])
     program = [x.reference for x in Verse.query.all()]
-    for _ in range(tries):
+    started = time.monotonic()
+    for attempt in range(tries):
+        if attempt and time.monotonic() - started > 25:
+            break  # don't keep the page waiting; "Try again" is quicker
         raw = ai.suggest(topic, program + out.seen, api_key=openai_key())
         r = refs.parse(raw or "")
         if r is None:

@@ -253,3 +253,16 @@ def test_place_sets_done_within_stage():
 def test_dangling_separator_from_formatting():
     assert str(refs.parse("Alma 34:14–")) == "Alma 34:14"
     assert str(refs.parse("Alma 34:14-15")) == "Alma 34:14-15"
+
+
+def test_ai_falls_back_when_gpt5_mini_fails(monkeypatch):
+    from scripture import ai
+    tried = []
+    def fake(model, prompt, key):
+        tried.append(model)
+        if model == ai.MODEL:
+            raise OSError("unavailable")
+        return "Alma 5:14"
+    monkeypatch.setattr(ai, "_request", fake)
+    assert ai.suggest("hope", [], api_key="x") == "Alma 5:14"
+    assert tried == ["gpt-5-mini", "gpt-4.1-mini"]

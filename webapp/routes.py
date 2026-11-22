@@ -114,47 +114,88 @@ def verse_delete(vid: str):
     db.session.delete(v)
     db.session.commit()
     flash(f"Deleted {name}.")
+    if request.form.get("next") == "add":
+        return redirect(url_for("main.add"))
     return redirect(url_for("main.stage", stage=stage))
+
+
+# The Add page keeps a "round" in the session so you can work through
+# suggestions without starting over: the theme, every verse already suggested
+# (never offered twice), the suggestion on screen, and what you've added.
+# Every action posts and redirects back here, so a refresh never adds twice.
+
+def _round() -> dict:
+    r = session.get("adding")
+    if not r or r.get("day") != today().isoformat():
+        r = {"day": today().isoformat(), "topic": None, "seen": [], "current": None,
+             "text": None, "added": [], "error": None}
+    return r
+
+
+def _save_round(r: dict) -> None:
+    session["adding"] = r
+    session.modified = True
+
+
+def _next_suggestion(r: dict) -> None:
+    sug = svc.suggest_verse(r["topic"], r["seen"])
+    r["seen"] = sug.seen[-150:]
+    r["error"] = sug.error
+    r["current"] = sug.ref.display if sug.ref else None
+    fetched = texts.fetch(str(sug.ref)) if sug.ref else None
+    r["text"] = fetched[0] if fetched else None
 
 
 @bp.route("/add", methods=["GET", "POST"])
 def add():
     cfg = svc.get_settings()
-    ctx = {"tab": "add", "ai_ready": ai.available(svc.openai_key()),
-           "topic": request.values.get("topic", cfg["auto_add"].get("topic_default", "")),
-           "reference": request.values.get("reference", ""), "preview": None, "error": None,
-           "seen": ""}
-
+    r = _round()
+    ai_ready = ai.available(svc.openai_key())
     if request.method == "POST":
         action = request.form.get("action", "add")
-        if action == "suggest":
-            if not ai.available(svc.openai_key()):
-                ctx["error"] = "Add an OpenAI API key in Settings → Connections to use AI suggestions."
+        if action in ("suggest", "skip"):
+            if not ai_ready:
+                flash("Add an OpenAI API key in Settings → Connections to use AI suggestions.", "error")
             else:
-                # "seen" carries every verse already suggested this round, so
-                # "Suggest another" never offers the same one again.
-                seen = [s for s in (request.form.get("seen") or "").split("|") if s.strip()]
-                sug = svc.suggest_verse(ctx["topic"], seen)
-                ctx["seen"] = "|".join(sug.seen)
-                if sug.ref is None:
-                    ctx["error"] = sug.error
-                else:
-                    r = sug.ref
-                    ctx["reference"] = r.display
-                    fetched = texts.fetch(str(r))
-                    ctx["preview"] = {"ref": r.display, "text": fetched[0] if fetched else None,
-                                      "origin": "ai"}
-        else:
-            res = svc.add_verse(request.form.get("reference", ""),
-                                origin=request.form.get("origin", "manual"))
+                if action == "suggest":
+                    # Blank: the default theme from Settings.
+                    r["topic"] = ((request.form.get("topic") or "").strip()
+                                  or cfg["auto_add"].get("topic_default", "").strip())
+                _next_suggestion(r)
+        elif action == "clear":
+            r = _round() | {"topic": r["topic"], "seen": r["seen"]}
+            r["added"], r["current"], r["text"], r["error"] = [], None, None, None
+        elif action in ("add", "today"):
+            reference = request.form.get("reference", "")
+            from_ai = request.form.get("origin") == "ai"
+            res = svc.add_verse(reference, origin="ai" if from_ai else "manual")
             if res.error:
-                ctx["error"] = res.error
+                flash(res.error, "error")
+                if not from_ai:
+                    session["add_reference"] = reference  # keep what was typed
             else:
+                v = res.verse
                 for w in res.warnings:
                     flash(w, "error")
-                flash(f"Added {res.verse.display_ref} to the Backlog.")
-                return redirect(url_for("main.verse", vid=res.verse.id))
-    return render_template("add.html", **ctx)
+                if action == "today":
+                    svc.start_verse(v, today())
+                    db.session.commit()
+                    n, limit = svc.stage_counts()["daily"], int(cfg["auto_add"].get("daily_limit", 0) or 0)
+                    if limit and n > limit:
+                        flash(f"Daily now has {n} verses, over your limit of {limit}.", "error")
+                r["added"] = ([v.id] + [x for x in r["added"] if x != v.id])[:20]
+                if from_ai and ai_ready:
+                    _next_suggestion(r)  # straight on to the next one
+        _save_round(r)
+        return redirect(url_for("main.add"))
+
+    added = [v for v in (db.session.get(Verse, i) for i in r["added"]) if v is not None]
+    return render_template(
+        "add.html", tab="add", ai_ready=ai_ready, r=r, added=added,
+        topic=r["topic"] or "", default_topic=cfg["auto_add"].get("topic_default", ""),
+        reference=session.pop("add_reference", ""),
+        daily_count=svc.stage_counts()["daily"],
+        daily_limit=int(cfg["auto_add"].get("daily_limit", 0) or 0))
 
 
 def _int(name: str, default: int, lo: int = 0, hi: int = 999) -> int:

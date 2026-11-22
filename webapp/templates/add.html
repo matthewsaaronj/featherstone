@@ -4,49 +4,110 @@
 {% block header %}
 <header class="top">
   <p class="eyebrow">Backlog</p>
-  <h1 class="title">Add a verse</h1>
+  <h1 class="title">Add verses</h1>
 </header>
 {% endblock %}
 {% block content %}
 <main class="content">
-  {% if error %}<div class="form-error" role="alert">{{ error }}</div>{% endif %}
 
-  {% if preview %}
+  {# ---- AI suggestions: theme stays put; each action brings the next verse ---- #}
   <section class="group">
-    <h2 class="eyebrow">Suggested</h2>
-    <div class="card stack">
-      <h3 style="margin: 0; font-family: var(--serif); font-size: 24px;">{{ preview.ref }}</h3>
-      {% if preview.text %}<div class="scripture">{% for p in preview.text.split('\n\n') %}<p>{{ p }}</p>{% endfor %}</div>{% endif %}
-      <form method="post" class="actions">
-        <input type="hidden" name="reference" value="{{ preview.ref }}">
+    <form method="post" class="stack" data-busy="Finding a verse…">
+      <div class="field">
+        <label for="topic">What are you looking for?</label>
+        <textarea class="input describe" id="topic" name="topic" rows="3" maxlength="400" enterkeyhint="search"
+          placeholder="A theme like “grace”, or describe it: “a verse about how missionary work can cover a multitude of sins”">{{ topic }}</textarea>
+        <p class="help">{% if ai_ready %}A word or two, or describe the verse you have in mind.{% if default_topic %} Leave it blank for your default theme, {{ default_topic }}.{% endif %}{% else %}Needs an OpenAI API key in Settings → Connections.{% endif %}</p>
+      </div>
+      <button class="btn secondary" type="submit" name="action" value="suggest" {% if not ai_ready %}disabled{% endif %}>{{ icon('spark', 20) }}{{ 'Find a different verse' if r.current else 'Find a verse' }}</button>
+    </form>
+
+    {% if r.current %}
+    <div class="card stack suggestion">
+      <div class="suggestion-head">
+        <h2>{{ r.current }}</h2>
+        {% if r.topic %}<span class="pill topic-pill" title="{{ r.topic }}">{{ r.topic }}</span>{% endif %}
+      </div>
+      {% if r.text %}<div class="scripture">{% for p in r.text.split('\n\n') %}<p>{{ p }}</p>{% endfor %}</div>
+      {% else %}<p class="help">Couldn't load the text just now. It's fetched again when you add it.</p>{% endif %}
+      <form method="post" class="suggestion-actions sticky-actions" data-busy="Adding…">
+        <input type="hidden" name="reference" value="{{ r.current }}">
         <input type="hidden" name="origin" value="ai">
-        <input type="hidden" name="topic" value="{{ topic }}">
-        <input type="hidden" name="seen" value="{{ seen }}">
         <button class="btn" type="submit" name="action" value="add">Add to Backlog</button>
-        <button class="btn ghost" type="submit" name="action" value="suggest">Suggest another</button>
+        <button class="btn secondary" type="submit" name="action" value="today">Start today</button>
+        <button class="btn ghost" type="submit" name="action" value="skip">Skip and suggest another</button>
       </form>
     </div>
+    {% elif r.error %}
+    <div class="form-error" role="alert">{{ r.error }}</div>
+    {% endif %}
   </section>
-  {% endif %}
+
+  <div class="or">or type a reference</div>
 
   <form method="post" class="stack">
     <div class="field">
-      <label for="reference">Reference</label>
-      <input class="input" id="reference" name="reference" data-refmask value="{{ reference if not preview }}" placeholder="Alma 34:14–15" autocomplete="off" autocapitalize="words">
+      <label for="reference" class="sr-only">Reference</label>
+      <input class="input" id="reference" name="reference" data-refmask value="{{ reference }}" placeholder="Alma 34:14–15" autocomplete="off" autocapitalize="words">
       <p class="help">One passage. Just use spaces — the “:” and “–” fill in as you type. The text is fetched for you.</p>
     </div>
-    <button class="btn" type="submit" name="action" value="add">Add to Backlog</button>
-  </form>
-
-  <div class="or">or</div>
-
-  <form method="post" class="stack">
-    <div class="field">
-      <label for="topic">Let AI pick by theme</label>
-      <input class="input" id="topic" name="topic" value="{{ topic }}" placeholder="Faith, repentance, grace…">
-      <p class="help">{% if ai_ready %}You'll see the verse before it's added. Nothing already in your program is suggested.{% else %}Needs an OpenAI API key in Settings → Connections.{% endif %}</p>
+    <div class="suggestion-actions">
+      <button class="btn" type="submit" name="action" value="add">Add to Backlog</button>
+      <button class="btn secondary" type="submit" name="action" value="today">Start today</button>
     </div>
-    <button class="btn secondary" type="submit" name="action" value="suggest" {% if not ai_ready %}disabled{% endif %}>{{ icon('spark', 20) }}Suggest a verse</button>
   </form>
+
+  {% if added %}
+  <section class="group">
+    <div class="group-head">
+      <h2 class="eyebrow">Added just now</h2>
+      <form method="post"><button class="link-btn" type="submit" name="action" value="clear">Clear list</button></form>
+    </div>
+    <div class="list">
+      {% for v in added %}
+      <div class="row">
+        <a class="row-main" href="{{ url_for('main.verse', vid=v.id) }}">
+          <span class="row-title">{{ v.display_ref }}</span>
+          <span class="row-sub">{{ 'Daily, starting today' if v.stage == 'daily' and v.start_date == today else STAGE_TITLES[v.stage] }}</span>
+        </a>
+        <form method="post" action="{{ url_for('main.verse_delete', vid=v.id) }}" onsubmit="return confirm('Remove {{ v.display_ref }}?');">
+          <input type="hidden" name="next" value="add">
+          <button class="link-btn" type="submit">Undo</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="help" style="margin: 8px 4px 0;">Daily has {{ daily_count }}{% if daily_limit %} of {{ daily_limit }}{% endif %} verses.</p>
+  </section>
+  {% endif %}
 </main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Return in the description box searches, like a search field (Shift+Return for a new line).
+  var topic = document.getElementById("topic");
+  if (topic) topic.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      var b = topic.form.querySelector('button[value="suggest"]');
+      if (b && !b.disabled) topic.form.requestSubmit(b);
+    }
+  });
+  // AI calls take a moment: show it, and stop double taps.
+  document.querySelectorAll("form[data-busy]").forEach(function (f) {
+    f.addEventListener("submit", function (e) {
+      var b = e.submitter;
+      if (f.dataset.sent) { e.preventDefault(); return; }
+      f.dataset.sent = "1";
+      if (b) {
+        var keep = document.createElement("input");
+        keep.type = "hidden"; keep.name = b.name; keep.value = b.value;
+        f.appendChild(keep);
+        b.textContent = (b.value === "skip" || b.value === "suggest") ? f.dataset.busy : "Adding…";
+      }
+      f.querySelectorAll("button").forEach(function (x) { x.disabled = true; });
+    });
+  });
+</script>
 {% endblock %}

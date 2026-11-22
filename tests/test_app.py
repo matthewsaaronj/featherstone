@@ -307,31 +307,59 @@ def _fake_ai(monkeypatch, answers):
     return calls
 
 
-def test_suggest_another_never_repeats(app, monkeypatch):
-    # The AI keeps answering Alma 32:21 first; the second time it must be skipped.
+def _post(c, **data):
+    return c.post("/add", data=data, follow_redirects=True).get_data(as_text=True)
+
+
+def test_skip_never_repeats(app, monkeypatch):
+    # The AI keeps answering Alma 32:21 first; the second time it must be passed over.
+    monkeypatch.setattr(svc.texts, "fetch", lambda ref: (f"Text of {ref}.", "nephi.org"))
     calls = _fake_ai(monkeypatch, ["Alma 32:21", "Alma 32:21", "Ether 12:27"])
     c = app.test_client()
-    first = c.post("/add", data={"action": "suggest", "topic": "faith"}).get_data(as_text=True)
-    assert "Alma 32:21" in first and 'name="seen" value="Alma 32:21"' in first
-    second = c.post("/add", data={"action": "suggest", "topic": "faith",
-                                  "seen": "Alma 32:21"}).get_data(as_text=True)
+    first = _post(c, action="suggest", topic="faith")
+    assert "Alma 32:21" in first and "Text of Alma 32:21." in first
+    second = _post(c, action="skip")
     assert "Ether 12:27" in second
     assert "Alma 32:21" in calls[1]            # told to avoid the earlier suggestion
-    assert 'value="Alma 32:21|Ether 12:27"' in second
+    assert ">faith</textarea>" in second       # theme kept
 
 
 def test_suggestion_skips_verses_already_in_program(app, monkeypatch):
     svc.add_verse("Alma 32:21")
     _fake_ai(monkeypatch, ["Alma 32:21-22", "Moroni 10:4"])
-    page = app.test_client().post("/add", data={"action": "suggest", "topic": "faith"}).get_data(as_text=True)
+    page = _post(app.test_client(), action="suggest", topic="faith")
     assert "Moroni 10:4" in page and "overlaps" not in page
 
 
 def test_suggestion_gives_up_gracefully(app, monkeypatch):
-    _fake_ai(monkeypatch, ["Alma 32:21", "Alma 32:21", "Alma 32:21", "Alma 32:21"])
-    page = app.test_client().post("/add", data={"action": "suggest", "topic": "faith",
-                                                "seen": "Alma 32:21"}).get_data(as_text=True)
-    assert "find a new verse" in page
+    _fake_ai(monkeypatch, ["Alma 32:21", "Alma 32:21", "Alma 32:21", "Alma 32:21", "Alma 32:21"])
+    c = app.test_client()
+    _post(c, action="suggest", topic="faith")
+    assert "find a new verse" in _post(c, action="skip")
+
+
+def test_add_keeps_going_with_next_suggestion(app, monkeypatch):
+    _fake_ai(monkeypatch, ["Alma 32:21", "Ether 12:27", "Moroni 10:4"])
+    c = app.test_client()
+    _post(c, action="suggest", topic="faith")
+    page = _post(c, action="add", reference="Alma 32:21", origin="ai")
+    assert "Ether 12:27" in page and "Added just now" in page   # next one is up
+    page = _post(c, action="today", reference="Ether 12:27", origin="ai")
+    assert "Moroni 10:4" in page and "Daily, starting today" in page
+    a = Verse.query.filter_by(reference="Alma 32:21").one()
+    e = Verse.query.filter_by(reference="Ether 12:27").one()
+    assert (a.stage, a.origin, e.stage, e.due_date) == ("backlog", "ai", "daily", DAY)
+
+
+def test_typed_reference_stays_on_add_page(app):
+    c = app.test_client()
+    page = _post(c, action="add", reference="moro 10 4")
+    assert "Moroni 10:4" in page and "Added just now" in page
+    page = _post(c, action="add", reference="Moroni 10:4-5")
+    assert "overlaps" in page and 'value="Moroni 10:4-5"' in page   # error keeps the text
+    vid = Verse.query.one().id
+    c.post(f"/verse/{vid}/delete", data={"next": "add"})
+    assert Verse.query.count() == 0
 
 
 # ---------- Daily limit, quiz difficulty, struggling, delete ----------
@@ -431,3 +459,40 @@ def test_late_weekly_is_urgent_only_on_last_day(app):
     v = _weekly(app, sat)
     assert not svc.today_view(sat + timedelta(days=2))["overdue"][0].urgent
     assert svc.today_view(sat + timedelta(days=3))["overdue"][0].urgent
+
+
+def test_blank_search_uses_default_theme_and_descriptions_reach_ai(app, monkeypatch):
+    told = []
+    monkeypatch.setattr(svc.ai, "available", lambda *a, **k: True)
+    monkeypatch.setattr(svc.ai, "suggest", lambda topic, ex, api_key=None: told.append(topic) or "Moroni 10:4")
+    c = app.test_client()
+    _post(c, action="suggest", topic="  ")
+    assert told[-1] == svc.get_settings()["auto_add"]["topic_default"]
+    desc = "A verse about how missionary work can cover a multitude of sins"
+    _post(c, action="suggest", topic=desc)
+    assert told[-1] == desc
+
+
+def test_ai_prompt_treats_topic_as_description(monkeypatch):
+    from scripture import ai
+    seen = {}
+    monkeypatch.setattr(ai, "_chat", lambda prompt, key=None: seen.setdefault("p", prompt) and "Alma 5:14")
+    ai.suggest("missionary work covering sins", [], api_key="x")
+    assert "description" in seen["p"] and "missionary work covering sins" in seen["p"]
+
+
+def test_pages_have_balanced_divs(app):
+    from html.parser import HTMLParser
+    class P(HTMLParser):
+        depth = 0
+        def handle_starttag(self, tag, a):
+            if tag == "div": self.depth += 1
+        def handle_endtag(self, tag):
+            if tag == "div":
+                self.depth -= 1
+                assert self.depth >= 0, "stray </div>"
+    v = svc.add_verse("Alma 32:21").verse
+    c = app.test_client()
+    for path in ["/", "/add", "/settings", "/stage/daily", f"/verse/{v.id}"]:
+        p = P(); p.feed(c.get(path).get_data(as_text=True))
+        assert p.depth == 0, path
