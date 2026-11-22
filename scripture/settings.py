@@ -56,6 +56,9 @@ DEFAULTS: dict[str, Any] = {
         "evening_enabled": True,
         "evening": "21:00",
     },
+    "appearance": {
+        "theme": "system",  # "system" (follow the device), "light" or "dark"
+    },
     "due_time": {"hour": 22, "minute": 0},
 }
 

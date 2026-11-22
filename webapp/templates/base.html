@@ -1,11 +1,15 @@
 {% from "_icons.html" import icon %}<!doctype html>
-<html lang="en">
+<html lang="en"{% if theme != "system" %} data-theme="{{ theme }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}Featherstone{% endblock %}</title>
+  {% if theme == "system" %}
   <meta name="theme-color" content="#F7F7F5" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0F131A" media="(prefers-color-scheme: dark)">
+  {% else %}
+  <meta name="theme-color" content="{{ '#0F131A' if theme == 'dark' else '#F7F7F5' }}">
+  {% endif %}
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Featherstone">

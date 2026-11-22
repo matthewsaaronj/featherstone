@@ -26,8 +26,10 @@
   --radius: 14px;
   color-scheme: light;
 }
+/* Dark theme: follows the system setting unless Settings → Appearance picks
+   Light or Dark, which sets data-theme on <html>. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0F131A;
     --surface: #171C25;
     --surface-2: #222937;
@@ -50,6 +52,29 @@
     --shadow: none;
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #0F131A;
+  --surface: #171C25;
+  --surface-2: #222937;
+  --line: #262D3A;
+  --line-soft: #202633;
+  --ink: #E8EAEE;
+  --muted: #A2A9B5;
+  --faint: #6E7684;
+  --navy: #DCE3EE;
+  --accent: #6AA7E0;
+  --accent-ink: #0F131A;
+  --accent-soft: #1C2A3D;
+  --accent-soft-ink: #A9CBEC;
+  --warn: #E8B35C;
+  --warn-soft: #2E2416;
+  --ok: #7CC495;
+  --bad: #EE8E8E;
+  --blank: #2C3442;
+  --dot-off: #343C4A;
+  --shadow: none;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -338,3 +363,17 @@ select.input { appearance: none; -webkit-appearance: none; padding-right: 40px; 
 .push-status.warn { color: var(--warn); }
 .card.pending { border-color: var(--warn); background: var(--warn-soft); }
 input[type="time"].input { font-size: 16px; text-align: center; }
+
+/* appearance picker: three-way segmented control */
+fieldset.theme-picker { border: 0; margin: 0; flex-direction: column; align-items: stretch; gap: 10px; }
+fieldset.theme-picker legend { padding: 0; margin-bottom: 10px; float: left; }
+fieldset.theme-picker .segmented { clear: both; }
+.segmented { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px;
+  border-radius: 12px; background: var(--surface-2); }
+.segmented label { position: relative; }
+.segmented input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.segmented span { display: flex; align-items: center; justify-content: center; min-height: 40px; border-radius: 9px;
+  font-size: 15px; font-weight: 500; color: var(--muted); }
+.segmented input:checked + span { background: var(--surface); color: var(--ink); font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.segmented input:focus-visible + span { outline: 3px solid var(--accent-soft); outline-offset: 1px; }

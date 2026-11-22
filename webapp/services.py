@@ -61,20 +61,9 @@ def openai_key_source() -> Optional[str]:
 
 
 def push_contact() -> str:
-    """Contact sent to phone push services with each notification (required by
-    them; never used to email you). From Settings, else VAPID_SUBJECT."""
-    return kv_get("push.contact") or current_app.config["VAPID_SUBJECT"]
-
-
-def normalize_contact(value: str) -> Optional[str]:
-    v = (value or "").strip()
-    if not v:
-        return None
-    if v.startswith(("mailto:", "https://")):
-        return v
-    if "@" in v and " " not in v:
-        return "mailto:" + v
-    return None
+    """Contact sent to phone push services with each notification. They require
+    one but don't check it; the default placeholder works (VAPID_SUBJECT)."""
+    return current_app.config["VAPID_SUBJECT"]
 
 
 def save_settings(cfg: dict) -> None:

@@ -27,9 +27,14 @@ def _upkeep():
         svc.daily_upkeep(today())
 
 
+THEMES = ("system", "light", "dark")
+
+
 @bp.app_context_processor
 def _globals():
-    return {"today": today(), "STAGE_TITLES": svc.STAGE_TITLES}
+    theme = svc.get_settings().get("appearance", {}).get("theme", "system")
+    return {"today": today(), "STAGE_TITLES": svc.STAGE_TITLES,
+            "theme": theme if theme in THEMES else "system"}
 
 
 @bp.get("/")
@@ -188,13 +193,8 @@ def settings():
             svc.kv_set("secret.openai_api_key", None)
         elif (request.form.get("openai_key") or "").strip():
             svc.kv_set("secret.openai_api_key", request.form["openai_key"].strip())
-        contact_in = (request.form.get("push_contact") or "").strip()
-        if contact_in:
-            contact = svc.normalize_contact(contact_in)
-            if contact:
-                svc.kv_set("push.contact", contact)
-            else:
-                flash("The notification contact should be an email address or a web address starting with https://.", "error")
+        if request.form.get("theme") in THEMES:
+            cfg.setdefault("appearance", {})["theme"] = request.form["theme"]
         if request.form.get("answer_style") in svc.ANSWER_STYLES:
             cfg.setdefault("quiz", {})["answer_style"] = request.form["answer_style"]
         svc.save_settings(cfg)
@@ -203,7 +203,7 @@ def settings():
     key = svc.openai_key()
     return render_template("settings.html", tab="settings", cfg=cfg, ai_ready=ai.available(key),
                            openai_hint=("…" + key[-4:]) if key else None,
-                           openai_source=svc.openai_key_source(), push_contact=svc.push_contact(),
+                           openai_source=svc.openai_key_source(),
                            last_auto_added=svc.kv_get("last_auto_added"),
                            vapid_key=current_app.config["VAPID_PUBLIC_KEY"] if automation.vapid_ready() else "",
                            devices=PushSubscription.query.count())

@@ -186,19 +186,26 @@ def test_connections_saved_in_settings(app, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     c = app.test_client()
     assert svc.openai_key() is None
-    c.post("/settings", data={"openai_key": "sk-test-1234", "push_contact": "me@example.org"})
+    c.post("/settings", data={"openai_key": "sk-test-1234"})
     assert svc.openai_key() == "sk-test-1234" and svc.openai_key_source() == "settings"
-    assert svc.push_contact() == "mailto:me@example.org"
     page = c.get("/settings").get_data(as_text=True)
     assert "sk-test-1234" not in page and "…1234" in page      # key never echoed back
-    c.post("/settings", data={"openai_remove": "on", "push_contact": "https://example.org/contact"})
-    assert svc.openai_key() is None and svc.push_contact() == "https://example.org/contact"
+    c.post("/settings", data={"openai_remove": "on"})
+    assert svc.openai_key() is None
+    assert "Notification contact" not in c.get("/settings").get_data(as_text=True)
 
 
-def test_bad_contact_is_rejected(app):
-    before = svc.push_contact()
-    app.test_client().post("/settings", data={"push_contact": "not a contact"})
-    assert svc.push_contact() == before
+def test_theme_setting(app):
+    c = app.test_client()
+    assert "data-theme" not in c.get("/").get_data(as_text=True).split(">")[1]   # system by default
+    c.post("/settings", data={"theme": "dark"})
+    assert '<html lang="en" data-theme="dark">' in c.get("/").get_data(as_text=True)
+    c.post("/settings", data={"theme": "light"})
+    assert '<html lang="en" data-theme="light">' in c.get("/stage/daily").get_data(as_text=True)
+    c.post("/settings", data={"theme": "neon"})                                  # ignored
+    assert svc.get_settings()["appearance"]["theme"] == "light"
+    c.post("/settings", data={"theme": "system"})
+    assert "data-theme" not in c.get("/").get_data(as_text=True).split(">")[1]
 
 
 def test_keys_are_made_on_first_run(tmp_path, monkeypatch):
