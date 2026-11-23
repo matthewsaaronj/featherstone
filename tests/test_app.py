@@ -438,20 +438,35 @@ def test_delete_verse_from_any_stage(app):
     assert Review.query.filter_by(verse_id=vid).count() == 0
 
 
-def test_dots_show_misses_and_urgent_verses_come_first(app):
+def test_dots_in_date_order_and_only_missed_yesterday_is_urgent(app):
     a, b = _start(app, "Alma 32:21"), _start(app, "Ether 12:27")
-    svc.daily_upkeep(DAY + timedelta(days=2))   # both lose two days
+    svc.record_review(a, "got", "ref_to_text", DAY)      # day 1: both good
+    svc.record_review(b, "got", "ref_to_text", DAY)
+    svc.daily_upkeep(DAY + timedelta(days=2))             # day 2: both missed
     day = DAY + timedelta(days=2)
-    b.extra, a.extra = 2, 0                    # only Ether has misses
+    svc.record_review(a, "got", "ref_to_text", day)       # day 3: only Alma reviewed
     db.session.commit()
-    view = svc.today_view(day)
-    first = view["due_by_stage"]["daily"][0]
-    assert first.verse.id == b.id and first.urgent
-    assert first.dots == ["d-miss"] * 2 + ["d-todo"] * 7
-    assert not view["due_by_stage"]["daily"][1].urgent
-    app.config["TODAY_OVERRIDE"] = day.isoformat()
+    # Next day: Alma has an old miss but was reviewed yesterday; Ether missed yesterday.
+    nxt = day + timedelta(days=1)
+    svc.daily_upkeep(nxt)
+    view = svc.today_view(nxt)
+    items = {i.verse.id: i for i in view["due_by_stage"]["daily"]}
+    assert items[a.id].dots[:3] == ["d-done", "d-miss", "d-done"]
+    assert not items[a.id].urgent
+    assert items[b.id].dots[:3] == ["d-done", "d-miss", "d-miss"]
+    assert items[b.id].urgent
+    assert view["due_by_stage"]["daily"][0].verse.id == b.id
+    app.config["TODAY_OVERRIDE"] = nxt.isoformat()
     page = app.test_client().get("/").get_data(as_text=True)
-    assert 'class="row urgent"' in page and "d-miss" in page
+    assert page.count('class="row urgent"') == 1 and "d-miss" in page
+
+
+def test_dots_fill_in_reviews_from_before_history(app):
+    v = _start(app)
+    v.done, v.extra = 2, 1      # counts carried over, no review rows
+    db.session.commit()
+    it = svc.today_view(DAY)["due_by_stage"]["daily"][0]
+    assert it.dots[:3] == ["d-done", "d-done", "d-miss"] and not it.urgent
 
 
 def test_late_weekly_is_urgent_only_on_last_day(app):

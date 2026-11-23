@@ -320,17 +320,51 @@ def _item(v: Verse, on: date, cfg: dict, practice: bool = False) -> Item:
     if total is None:  # Mastered: no fixed length
         return it
     it.done, it.total = s.done, total
+    line = _timeline(v, s)
     if schedule.is_due(s, on) and not practice:
-        last_day = schedule.window_end(s, cfg) <= on
-        it.urgent = last_day and (it.overdue or s.extra > 0)
+        if s.stage == "daily":
+            # Missed yesterday: do it today so it doesn't slip a second day.
+            it.urgent = bool(line) and line[-1][1] == "d-miss" and line[-1][0] >= on - timedelta(days=1)
+        else:
+            # Late, and today is the last day it still counts.
+            it.urgent = it.overdue and schedule.window_end(s, cfg) <= on
     if s.stage in ("daily", "weekly"):
-        # One dot per review the stage now takes: good ones, then one red dot
-        # per missed review (each made the stage one longer), then those to go.
+        # One dot per review the stage now takes, in date order: blue for a good
+        # review, red for a missed one (each made the stage one longer), then gray to go.
         it.marker = "dots"
-        it.dots = ["d-done"] * s.done + ["d-miss"] * s.extra + ["d-todo"] * (total - s.done)
+        it.dots = _dot_order(line, s.done, s.extra) + ["d-todo"] * (total - s.done)
     else:
         it.marker = "bar"
     return it
+
+
+def _timeline(v: Verse, s: schedule.Schedule) -> list[tuple[date, str]]:
+    """This stage's closed review slots, oldest first: (slot date, "d-done" | "d-miss").
+    A slot is done if a counted review landed on it, missed if it was lost or
+    failed and never made good. The open slot (s.due) isn't settled yet."""
+    slots: dict[date, str] = {}
+    for r in v.reviews:  # newest first
+        if r.mode == "manual":
+            break  # moved by hand: what came before belongs to another run
+        if r.stage != s.stage or r.practice or r.slot_date is None or r.slot_date >= s.due:
+            continue
+        if r.counted:
+            slots[r.slot_date] = "d-done"
+        elif r.result in ("skipped", "missed"):
+            slots.setdefault(r.slot_date, "d-miss")
+    return sorted(slots.items())
+
+
+def _dot_order(line: list[tuple[date, str]], done: int, extra: int) -> list[str]:
+    """Dots for the reviews so far, in the order they happened. The counts are
+    the truth; history fills in the order. Reviews older than the history (from
+    before it was kept) go first."""
+    seq = [kind for _, kind in line]
+    for kind, want in (("d-done", done), ("d-miss", extra)):
+        while seq.count(kind) > want:
+            seq.remove(kind)  # drops the oldest
+    return (["d-done"] * (done - seq.count("d-done")) +
+            ["d-miss"] * (extra - seq.count("d-miss")) + seq)
 
 
 def today_view(on: date) -> dict:
