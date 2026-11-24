@@ -85,7 +85,7 @@ def test_backup_keeps_newest(app):
 def test_message_counts_due_and_overdue(app):
     assert automation.message_for(DAY) is None
     _active()
-    assert automation.message_for(DAY)["body"] == "1 verse due today."
+    assert automation.message_for(DAY)["body"] == "1 verse due today.\nAlma 32:21: Text of Alma 32:21."
     assert automation.message_for(DAY, evening=True)["body"] == "1 verse still to review today."
 
 
@@ -105,10 +105,11 @@ def test_morning_and_evening_once_each(app, sent):
     assert sent == []
     automation.notify_due(at(7, 0))
     automation.notify_due(at(7, 15))
-    assert sent == ["1 verse due today."]
+    morning = "1 verse due today.\nAlma 32:21: Text of Alma 32:21."
+    assert sent == [morning]
     automation.notify_due(at(21, 0))
     automation.notify_due(at(21, 30))
-    assert sent == ["1 verse due today.", "1 verse still to review today."]
+    assert sent == [morning, "1 verse still to review today."]
 
 
 def test_no_evening_nudge_when_done(app, sent):
@@ -233,3 +234,17 @@ def test_each_copy_has_its_own_session_cookie(tmp_path):
                     "DATA_DIR": str(tmp_path / "b"), "TESTING": True})
     assert a.config["SESSION_COOKIE_NAME"] != b.config["SESSION_COOKIE_NAME"]
     assert a.config["SESSION_COOKIE_NAME"].startswith("featherstone_")
+
+
+def test_midday_verse_nudge_only_when_turned_on(app, sent):
+    _active()
+    at = lambda h, m=0: datetime.combine(DAY, datetime.min.time()).replace(hour=h, minute=m)
+    automation.notify_due(at(13))
+    assert len(sent) == 1                       # just the morning one
+    cfg = svc.get_settings()
+    cfg["notify"]["midday_enabled"] = True
+    svc.save_settings(cfg)
+    db.session.commit()
+    automation.notify_due(at(13))
+    automation.notify_due(at(13, 30))
+    assert sent[1:] == ["T o A 32:21."]         # first letters, once

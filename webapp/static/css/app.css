@@ -406,3 +406,35 @@ fieldset.theme-picker .segmented { clear: both; }
 .suggestion-actions .btn { font-size: 16px; padding: 0 12px; white-space: nowrap; }
 textarea.input.describe { min-height: 92px; font-family: inherit; line-height: 1.45; resize: vertical; }
 .topic-pill { max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
+
+/* Read / First letters / Hide on the verse page */
+.practice-views { margin-bottom: 10px; }
+.practice-hide { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; font-family: var(--sans); }
+.practice-hide[hidden] { display: none; }
+.practice-hide p { margin: 0; font-size: 15px; color: var(--muted); }
+.memorize-pin { margin: 0; }
+.memorize-pin .help { margin: 0 4px; }
+
+/* Verse of the day: a quiet full-screen page */
+.app.memorize-page { padding-bottom: 0; }
+.mz-head { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 4px; }
+.mz-details { min-width: 44px; padding: 10px 8px; font-size: 15px; font-weight: 500; text-align: right; }
+.mz-main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 16px 28px 24px; }
+.mz-ref { margin: 0 0 18px; font-family: var(--serif); font-size: 26px; font-weight: 600; letter-spacing: -.01em; line-height: 1.2; }
+.mz-text { font-family: var(--serif); font-size: 19px; line-height: 1.7; color: var(--ink); }
+.mz-text p { margin: 0 0 12px; }
+.mz-text p:last-child { margin-bottom: 0; }
+.mz-text sup { font-family: var(--sans); font-size: 11px; color: var(--muted); margin-right: 3px; }
+.mz-empty { color: var(--muted); }
+/* Hide: each word is a blank its own width until revealed */
+.mz-steps { cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+.mz-steps .w:not(.on) { color: transparent;
+  background: linear-gradient(var(--dot-off), var(--dot-off)) left 0 bottom 0.2em / 100% 2px no-repeat; }
+.mz-steps sup { color: transparent; }
+.mz-steps p.started sup { color: var(--muted); }
+.mz-hint { margin: 14px 0 0; font-size: 14px; color: var(--muted); }
+.mz-controls { display: flex; gap: 8px; margin-top: 18px; }
+.mz-controls .btn { flex: 1; font-size: 15px; padding: 0 10px; white-space: nowrap; }
+.mz-controls .btn.icon { flex: none; width: 48px; padding: 0; }
+.mz-foot { padding: 4px 16px calc(12px + env(safe-area-inset-bottom)); }

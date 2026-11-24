@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_rows.html" import verse_row with context %}
+{% from "_memorize.html" import memorize_row with context %}
 {% block title %}Today · Featherstone{% endblock %}
 {% block header %}
 <header class="top">
@@ -18,6 +19,8 @@
 {% endblock %}
 {% block content %}
 <main class="content">
+  {% if memorize %}{{ memorize_row(memorize) }}{% endif %}
+
   {% if overdue %}
   <section class="group">
     <h2 class="eyebrow warn">Late</h2>
@@ -52,3 +55,4 @@
 <div class="cta"><a class="btn secondary" href="{{ url_for('main.review', start=1) }}">Practice · {{ practice|length }} verse{{ 's' if practice|length != 1 }}</a></div>
 {% endif %}
 {% endblock %}
+

@@ -31,6 +31,12 @@
       <div><dt>Missed</dt><dd>{{ v.extra }}</dd></div>
     </dl>
   </section>
+  {% if v.is_active %}
+  <form method="post" action="{{ url_for('main.verse_memorize', vid=v.id) }}" class="memorize-pin">
+    {% if memorizing %}<p class="help">Memorizing: this is your verse of the day. <a href="{{ url_for('main.memorize') }}">Practice full screen</a></p>
+    {% else %}<button class="btn secondary small" type="submit">Make this my verse of the day</button>{% endif %}
+  </form>
+  {% endif %}
   {% if struggling and move_back %}
   <section class="card struggle">
     <p><strong>Struggling.</strong> Missed 3 of the last 5 reviews. {% if move_back == v.stage %}Restart Daily to build it back up?{% else %}Move it back to {{ STAGE_TITLES[move_back] }} for more frequent reviews?{% endif %}</p>
@@ -72,11 +78,24 @@
       </form>
     </div>
     {% endif %}
-    <div class="card scripture">
+    {% if v.text %}
+    <div class="segmented practice-views" role="radiogroup" aria-label="How to show the verse">
+      {% for val, lab in [('read', 'Read'), ('letters', 'First letters'), ('hide', 'Hide')] %}
+      <label><input type="radio" name="practice-view" value="{{ val }}" {% if val == 'read' %}checked{% endif %}><span>{{ lab }}</span></label>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div class="card scripture" data-practice>
       {% if v.text %}
         {% set paras = v.text.split('\n\n') %}
         {% set nums = (v.verse_end - v.verse_start + 1) if v.verse_end else 0 %}
-        {% for para in paras %}<p>{% if nums == paras|length and nums > 1 %}<sup>{{ v.verse_start + loop.index0 }}</sup>{% endif %}{{ para }}</p>{% endfor %}
+        {% set numbered = nums == paras|length and nums > 1 %}
+        <div data-view="read">{% for para in paras %}<p>{% if numbered %}<sup>{{ v.verse_start + loop.index0 }}</sup>{% endif %}{{ para }}</p>{% endfor %}</div>
+        <div data-view="letters" hidden>{% for para in paras %}<p>{% if numbered %}<sup>{{ v.verse_start + loop.index0 }}</sup>{% endif %}{{ first_letters(para) }}</p>{% endfor %}</div>
+        <div data-view="hide" class="practice-hide" hidden>
+          <p>Say it to yourself, then check.</p>
+          <button class="btn secondary small" type="button" data-reveal>Show the verse</button>
+        </div>
       {% else %}
         <p style="font-family: var(--sans); font-size: 15px; color: var(--muted);">No text yet. Fetch it or paste your own below.</p>
       {% endif %}
@@ -143,4 +162,27 @@
     </form>
   </div>
 </main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Read / First letters / Hide. The choice is remembered on this phone.
+  (function () {
+    var box = document.querySelector("[data-practice]");
+    var picker = document.querySelector(".practice-views");
+    if (!box || !picker) return;
+    function show(view) {
+      box.querySelectorAll("[data-view]").forEach(function (el) { el.hidden = el.dataset.view !== view; });
+      var r = picker.querySelector('input[value="' + view + '"]'); if (r) r.checked = true;
+    }
+    var saved = null; try { saved = localStorage.getItem("practiceView"); } catch (e) {}
+    if (saved) show(saved);
+    picker.addEventListener("change", function (e) {
+      show(e.target.value);
+      try { localStorage.setItem("practiceView", e.target.value); } catch (err) {}
+    });
+    var btn = box.querySelector("[data-reveal]");
+    if (btn) btn.addEventListener("click", function () { show("read"); });
+  })();
+</script>
 {% endblock %}

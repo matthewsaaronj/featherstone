@@ -116,17 +116,36 @@ def vapid_ready() -> bool:
     return bool(cfg.get("VAPID_PUBLIC_KEY") and os.path.exists(cfg.get("VAPID_PRIVATE_KEY_FILE", "")))
 
 
+def _snippet(text: str, limit: int = 160) -> str:
+    flat = " ".join((text or "").split())
+    return flat if len(flat) <= limit else flat[:limit].rsplit(" ", 1)[0] + "…"
+
+
 def message_for(on: date, evening: bool = False) -> Optional[dict]:
     view = svc.today_view(on)
     n, late = view["n_due"], view["n_overdue"]
-    if not n:
-        return None
     verses = f"{n} verse{'s' if n != 1 else ''}"
     if evening:
-        body = f"{verses} still to review today."
-    else:
-        body = f"{verses} due today" + (f" · {late} overdue" if late else "") + "."
-    return {"title": "Featherstone", "body": body, "url": "/"}
+        if not n:
+            return None
+        return {"title": "Featherstone", "body": f"{verses} still to review today.", "url": "/"}
+    # Morning: what's due, then the verse you're memorizing, for the lock screen.
+    m = view["memorize"]
+    if not n and not (m and m.text):
+        return None
+    lines = [f"{verses} due today" + (f" · {late} overdue" if late else "") + "."] if n else []
+    if m and m.text:
+        lines.append(f"{m.display_ref}: {_snippet(m.text)}")
+    return {"title": "Featherstone", "body": "\n".join(lines), "url": "/"}
+
+
+def midday_message(on: date) -> Optional[dict]:
+    m = svc.memorize_verse()
+    if not m:
+        return None
+    return {"title": f"Say {m.display_ref} to yourself",
+            "body": _snippet(svc.first_letters(m.text or ""), 160) or "Open Featherstone to practice.",
+            "url": "/"}
 
 
 def send_push(message: dict, errors: Optional[list] = None) -> tuple[int, int]:
@@ -190,6 +209,13 @@ def notify_due(now: datetime) -> list[str]:
             msg = message_for(on)
             if msg:
                 log.append("morning: sent %d, failed %d" % send_push(msg))
+    if cfg.get("midday_enabled") and cfg.get("midday"):
+        mh, mm = _at(cfg["midday"])
+        midday = now.replace(hour=mh, minute=mm, second=0, microsecond=0)
+        if now >= midday and (evening is None or now < evening) and svc._claim_day("last_push_midday", on):
+            msg = midday_message(on)
+            if msg:
+                log.append("midday: sent %d, failed %d" % send_push(msg))
     if evening is not None and now >= evening and svc._claim_day("last_push_evening", on):
         msg = message_for(on, evening=True)
         if msg:

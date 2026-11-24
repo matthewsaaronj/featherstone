@@ -37,12 +37,20 @@
         {% if devices %}<p class="row-sub" style="margin: 0;">{{ devices }} device{{ 's' if devices != 1 }} signed up.</p>{% endif %}
       </div>
       <div class="setting">
-        <span class="row-main"><label class="name" for="notify_enabled">Daily reminders</label><span class="row-sub">Only sent when verses are due</span></span>
+        <span class="row-main"><label class="name" for="notify_enabled">Daily reminders</label><span class="row-sub">Phone notifications</span></span>
         <input class="toggle" type="checkbox" role="switch" id="notify_enabled" name="notify_enabled" {% if cfg.notify.enabled %}checked{% endif %}>
       </div>
       <div class="setting">
-        <span class="row-main"><label class="name" for="notify_morning">Morning reminder</label><span class="row-sub">How many verses are due</span></span>
+        <span class="row-main"><label class="name" for="notify_morning">Morning reminder</label><span class="row-sub">What's due, and your verse of the day</span></span>
         <input class="input" style="width: 128px;" type="time" id="notify_morning" name="notify_morning" value="{{ cfg.notify.morning }}">
+      </div>
+      <div class="setting">
+        <span class="row-main"><label class="name" for="notify_midday_enabled">Midday verse nudge</label><span class="row-sub">Your verse of the day, first letters only</span></span>
+        <input class="toggle" type="checkbox" role="switch" id="notify_midday_enabled" name="notify_midday_enabled" {% if cfg.notify.midday_enabled %}checked{% endif %}>
+      </div>
+      <div class="setting">
+        <span class="row-main"><label class="name" for="notify_midday">Midday time</label></span>
+        <input class="input" style="width: 128px;" type="time" id="notify_midday" name="notify_midday" value="{{ cfg.notify.midday }}">
       </div>
       <div class="setting">
         <span class="row-main"><label class="name" for="notify_evening_enabled">Evening nudge</label><span class="row-sub">Only if verses are still due</span></span>

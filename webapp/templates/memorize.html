@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ v.display_ref }} · Memorizing{% endblock %}
+{% block app_class %}memorize-page{% endblock %}
+{% block header %}
+<header class="mz-head">
+  <a class="icon-btn" href="{{ url_for('main.index') }}" aria-label="Close">{{ icon('close', 22) }}</a>
+  <p class="eyebrow">Memorizing</p>
+  <a class="mz-details" href="{{ url_for('main.verse', vid=v.id) }}">Details</a>
+</header>
+{% endblock %}
+{% block tabbar %}{% endblock %}
+{% block content %}
+{% set paras = (v.text or '').split('\n\n') %}
+{% set nums = (v.verse_end - v.verse_start + 1) if v.verse_end else 0 %}
+{% set numbered = nums == paras|length and nums > 1 %}
+<main class="mz-main" data-practice>
+  <h1 class="mz-ref">{{ v.display_ref }}</h1>
+  {% if v.text %}
+  <div class="mz-text" data-view="read">{% for p in paras %}<p>{% if numbered %}<sup>{{ v.verse_start + loop.index0 }}</sup>{% endif %}{{ p }}</p>{% endfor %}</div>
+  <div class="mz-text" data-view="letters" hidden>{% for p in paras %}<p>{% if numbered %}<sup>{{ v.verse_start + loop.index0 }}</sup>{% endif %}{{ first_letters(p) }}</p>{% endfor %}</div>
+  <div data-view="hide" hidden>
+    <div class="mz-text mz-steps" data-steps aria-live="polite">{% for p in paras %}<p>{% if numbered %}<sup>{{ v.verse_start + loop.index0 }}</sup>{% endif %}{% for w in p.split() %}<span class="w">{{ w }}</span>{{ ' ' if not loop.last }}{% endfor %}</p>{% endfor %}</div>
+    <p class="mz-hint">Say it to yourself. Tap the verse for the next word.</p>
+    <div class="mz-controls">
+      <button class="btn secondary" type="button" data-step="phrase">Next phrase</button>
+      <button class="btn secondary" type="button" data-step="all">Show all</button>
+      <button class="btn secondary icon" type="button" data-step="restart" aria-label="Start over">{{ icon('restart', 20) }}</button>
+    </div>
+  </div>
+  {% else %}
+  <p class="mz-text mz-empty">No text yet. Open Details to fetch it.</p>
+  {% endif %}
+</main>
+{% if v.text %}
+<footer class="mz-foot">
+  <div class="segmented" role="radiogroup" aria-label="How to show the verse">
+    {% for val, lab in [('read', 'Read'), ('letters', 'First letters'), ('hide', 'Hide')] %}
+    <label><input type="radio" name="practice-view" value="{{ val }}" {% if val == 'read' %}checked{% endif %}><span>{{ lab }}</span></label>
+    {% endfor %}
+  </div>
+</footer>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var page = document.querySelector("[data-practice]");
+    var picker = document.querySelector(".mz-foot .segmented");
+    if (page && picker) {
+      var show = function (view) {
+        page.querySelectorAll("[data-view]").forEach(function (el) { el.hidden = el.dataset.view !== view; });
+        var r = picker.querySelector('input[value="' + view + '"]'); if (r) r.checked = true;
+      };
+      var saved = null; try { saved = localStorage.getItem("memorizeView"); } catch (e) {}
+      if (saved) show(saved);
+      picker.addEventListener("change", function (e) {
+        show(e.target.value);
+        try { localStorage.setItem("memorizeView", e.target.value); } catch (err) {}
+      });
+
+      // Hide: reveal a word, a phrase (to the next , ; : . ? !) or everything.
+      var steps = page.querySelector("[data-steps]");
+      var words = steps ? Array.prototype.slice.call(steps.querySelectorAll(".w")) : [];
+      var n = 0;
+      var draw = function () {
+        words.forEach(function (w, i) { w.classList.toggle("on", i < n); });
+        steps.querySelectorAll("p").forEach(function (p) {
+          var first = p.querySelector(".w"); p.classList.toggle("started", !!(first && first.classList.contains("on")));
+        });
+      };
+      var endsPhrase = function (w) { return /[,;:.?!][’”')\]]*$/.test(w.textContent); };
+      if (steps) {
+        steps.addEventListener("click", function () { if (n < words.length) { n++; draw(); } });
+        page.querySelectorAll("[data-step]").forEach(function (b) {
+          b.addEventListener("click", function () {
+            var kind = b.dataset.step;
+            if (kind === "restart") n = 0;
+            else if (kind === "all") n = words.length;
+            else { while (n < words.length) { n++; if (endsPhrase(words[n - 1])) break; } }
+            draw();
+          });
+        });
+        draw();
+      }
+    }
+    // Keep the screen on while this page is open (where the phone allows it).
+    function keepAwake() {
+      if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
+      navigator.wakeLock.request("screen").catch(function () {});
+    }
+    keepAwake();
+    document.addEventListener("visibilitychange", keepAwake);
+  })();
+</script>
+{% endblock %}

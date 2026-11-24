@@ -33,7 +33,7 @@ THEMES = ("system", "light", "dark")
 @bp.app_context_processor
 def _globals():
     theme = svc.get_settings().get("appearance", {}).get("theme", "system")
-    return {"today": today(), "STAGE_TITLES": svc.STAGE_TITLES,
+    return {"today": today(), "STAGE_TITLES": svc.STAGE_TITLES, "first_letters": svc.first_letters,
             "theme": theme if theme in THEMES else "system"}
 
 
@@ -69,7 +69,28 @@ def verse(vid: str):
         progress=svc.progress(v, cfg), rhythm=svc.rhythm(v),
         reviews=v.reviews[:8], overdue=bool(s and schedule.is_overdue(s, today())),
         struggling=svc.struggling(v), move_back=svc.MOVE_BACK.get(v.stage),
+        memorizing=(svc.memorize_verse() == v),
     )
+
+
+@bp.get("/memorize")
+def memorize():
+    v = svc.memorize_verse()
+    if v is None:
+        flash("No verse to memorize yet. Start one from your Backlog.")
+        return redirect(url_for("main.index"))
+    return render_template("memorize.html", tab="today", v=v)
+
+
+@bp.post("/verse/<vid>/memorize")
+def verse_memorize(vid: str):
+    v = db.session.get(Verse, vid) or abort(404)
+    if not v.is_active:
+        abort(400)
+    svc.pin_memorize(v, today())
+    db.session.commit()
+    flash(f"{v.display_ref} is your verse of the day.")
+    return redirect(url_for("main.index"))
 
 
 @bp.post("/verse/<vid>/start")
@@ -230,7 +251,8 @@ def settings():
         n = cfg.setdefault("notify", {})
         n["enabled"] = request.form.get("notify_enabled") == "on"
         n["evening_enabled"] = request.form.get("notify_evening_enabled") == "on"
-        for key in ("morning", "evening"):
+        n["midday_enabled"] = request.form.get("notify_midday_enabled") == "on"
+        for key in ("morning", "midday", "evening"):
             val = (request.form.get(f"notify_{key}") or "").strip()
             if re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", val):
                 n[key] = val

@@ -62,6 +62,9 @@ DEFAULTS: dict[str, Any] = {
         "morning": "07:00",
         "evening_enabled": True,
         "evening": "21:00",
+        # Optional midday nudge with the verse you're memorizing (first letters).
+        "midday_enabled": False,
+        "midday": "12:30",
     },
     "appearance": {
         "theme": "system",  # "system" (follow the device), "light" or "dark"

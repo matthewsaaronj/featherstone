@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -367,6 +368,36 @@ def _dot_order(line: list[tuple[date, str]], done: int, extra: int) -> list[str]
             ["d-miss"] * (extra - seq.count("d-miss")) + seq)
 
 
+# ---------------- verse of the day ----------------
+# The notecard in your pocket: the newest verse in Daily, until the next one
+# starts. Pinning another verse holds until a newer Daily verse starts.
+
+def memorize_verse() -> Optional[Verse]:
+    newest = (Verse.query.filter_by(stage="daily")
+              .order_by(Verse.start_date.desc(), Verse.done, Verse.created_at.desc()).first())
+    pin = (kv_get("memorize_pin") or "").split("|")
+    if len(pin) == 2:
+        v = db.session.get(Verse, pin[0])
+        pinned_on = date.fromisoformat(pin[1])
+        if v is not None and v.is_active and not (
+                newest and newest.start_date and newest.start_date > pinned_on):
+            return v
+    return newest
+
+
+def pin_memorize(v: Optional[Verse], on: date) -> None:
+    kv_set("memorize_pin", f"{v.id}|{on.isoformat()}" if v else None)
+
+
+_WORD = re.compile(r"[A-Za-z][A-Za-z’']*")
+
+
+def first_letters(text: str) -> str:
+    """'And now, my brethren' -> 'A n, m b'. Punctuation and line breaks stay."""
+    out = _WORD.sub(lambda m: m.group(0)[0], text or "")
+    return re.sub(r"[ \t]{2,}", " ", out)
+
+
 def today_view(on: date) -> dict:
     cfg = get_settings()
     active = Verse.query.filter(Verse.stage.in_(schedule.ACTIVE_STAGES)).all()
@@ -389,7 +420,7 @@ def today_view(on: date) -> dict:
         lst.sort(key=lambda i: (not i.urgent, -i.verse.extra, i.verse.reference))
     n_due = len(overdue) + sum(len(l) for l in due_by_stage.values())
     return {"overdue": overdue, "due_by_stage": due_by_stage, "practice": practice,
-            "n_due": n_due, "n_overdue": len(overdue), "counts": stage_counts()}
+            "memorize": memorize_verse(), "n_due": n_due, "n_overdue": len(overdue), "counts": stage_counts()}
 
 
 def stage_counts() -> dict[str, int]:

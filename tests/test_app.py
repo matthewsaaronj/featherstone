@@ -511,3 +511,48 @@ def test_pages_have_balanced_divs(app):
     for path in ["/", "/add", "/settings", "/stage/daily", f"/verse/{v.id}"]:
         p = P(); p.feed(c.get(path).get_data(as_text=True))
         assert p.depth == 0, path
+
+
+# ---------- verse of the day ----------
+
+def test_verse_of_the_day_is_newest_daily_until_pinned(app):
+    a = _start(app, "Alma 32:21")
+    b = svc.add_verse("Ether 12:27").verse
+    svc.start_verse(b, DAY + timedelta(days=1))
+    db.session.commit()
+    assert svc.memorize_verse() == b
+    svc.pin_memorize(a, DAY + timedelta(days=1))
+    db.session.commit()
+    assert svc.memorize_verse() == a
+    c = svc.add_verse("Moroni 10:4").verse        # a newer verse starts: back to newest
+    svc.start_verse(c, DAY + timedelta(days=2))
+    db.session.commit()
+    assert svc.memorize_verse() == c
+
+
+def test_first_letters_keeps_punctuation():
+    assert svc.first_letters("And now, my brethren; the Lord’s 2 words.") == "A n, m b; t L 2 w."
+
+
+def test_memorizing_row_on_today_practice_on_verse_page(app):
+    v = _start(app)
+    app.config["TODAY_OVERRIDE"] = DAY.isoformat()
+    c = app.test_client()
+    page = c.get("/").get_data(as_text=True)
+    assert "Memorizing" in page and "Tap to practice" in page and 'data-view' not in page
+    card = c.get("/memorize").get_data(as_text=True)
+    assert "memorize-page" in card and "Alma 32:21" in card and 'data-view="letters"' in card
+    assert '<span class="w">Text</span> <span class="w">of</span>' in card and "Next phrase" in card
+    assert 'class="tabbar"' not in card
+    vp = c.get(f"/verse/{v.id}").get_data(as_text=True)
+    assert 'data-view="letters"' in vp and "T o A 32:21." in vp and "Show the verse" in vp
+    other = _start(app, "Ether 12:27")
+    assert "Make this my verse of the day" in c.get(f"/verse/{v.id}").get_data(as_text=True)
+    c.post(f"/verse/{v.id}/memorize")
+    assert svc.memorize_verse() == v
+    assert "this is your verse of the day" in c.get(f"/verse/{v.id}").get_data(as_text=True)
+
+
+def test_notecard_without_a_verse_goes_back_to_today(app):
+    r = app.test_client().get("/memorize")
+    assert r.status_code == 302 and r.headers["Location"].endswith("/")
