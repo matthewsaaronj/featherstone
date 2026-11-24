@@ -148,11 +148,21 @@
       </div>
       <div class="field">
         <label for="move-done">Reviews already done in that stage</label>
-        <input class="input num" type="number" inputmode="numeric" min="0" id="move-done" name="done" value="{{ v.done if v.is_active else 0 }}">
+        <input class="input num" type="number" inputmode="numeric" min="0" id="move-done" name="done" value="{{ v.done if v.is_active else 0 }}" data-current="{{ v.done if v.is_active else 0 }}" data-stage="{{ v.stage }}">
         <p class="help">The verse keeps its {{ 'weekday and day of the month' if v.anchor_weekday is not none else 'rhythm, starting from today' }}. Its next review is the first matching date from today. Backlog puts it at the front of the line.</p>
       </div>
       <button class="btn small" type="submit">Move</button>
     </form>
+    <script>
+      // A new stage starts at 0 reviews; the current stage keeps its count.
+      (function () {
+        var st = document.getElementById("move-stage"), n = document.getElementById("move-done");
+        if (!st || !n) return;
+        st.addEventListener("change", function () {
+          n.value = st.value === n.dataset.stage ? n.dataset.current : 0;
+        });
+      })();
+    </script>
   </details>
 
   <div class="meta-foot">

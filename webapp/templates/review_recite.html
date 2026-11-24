@@ -42,7 +42,7 @@
     </p>
     <div class="ladder">
       {% if plan.support == 'none' %}<button class="btn secondary small" type="button" data-show="letters">First letters</button>{% endif %}
-      {% if plan.support == 'blanks' %}<button class="btn secondary small" type="button" data-show="full">Show missing words</button>
+      {% if plan.support == 'blanks' %}<button class="btn secondary small" type="button" data-toggle-blanks aria-pressed="false">Show missing words</button>
       {% elif plan.support != 'full' %}<button class="btn secondary small" type="button" data-show="full">Show verse</button>{% endif %}
     </div>
     {% else %}
@@ -64,28 +64,29 @@
 
 {% block scripts %}
 <script>
-  // Help ladder: first letters, then the full verse. Needing the full verse
-  // moves the suggested grade to Shaky.
+  // Help ladder: first letters, then the full verse. With blanks, one button
+  // shows and hides the missing words in place. The grade is always yours.
   (function () {
     var card = document.querySelector("[data-recite]");
     if (!card) return;
     var help = card.querySelector(".recite-help");
+    var toggle = card.querySelector("[data-toggle-blanks]");
+    var blanks = card.querySelector('[data-view="blanks"]');
+    if (toggle && blanks) {
+      toggle.addEventListener("click", function () {
+        var on = blanks.classList.toggle("revealed");
+        toggle.textContent = on ? "Hide missing words" : "Show missing words";
+        toggle.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
     card.querySelectorAll("[data-show]").forEach(function (b) {
       b.addEventListener("click", function () {
         var view = b.dataset.show;
-        var blanks = card.querySelector('[data-view="blanks"]');
-        if (view === "full" && blanks && !blanks.hidden) {
-          // Fill the blanks in place, keeping the verse's layout.
-          blanks.classList.add("revealed");
-        } else {
-          card.querySelectorAll("[data-view]").forEach(function (el) { el.hidden = el.dataset.view !== view; });
-        }
+        card.querySelectorAll("[data-view]").forEach(function (el) { el.hidden = el.dataset.view !== view; });
         b.hidden = true;
         if (view === "full") {
           card.querySelectorAll("[data-show]").forEach(function (x) { x.hidden = true; });
           if (help) help.textContent = "";
-          var got = document.querySelector(".grade-btn.got"), shaky = document.querySelector(".grade-btn.shaky");
-          if (got && shaky && card.dataset.start !== "full") { got.classList.remove("pick"); shaky.classList.add("pick"); }
         } else if (help) {
           help.textContent = "First letters of each word.";
         }
