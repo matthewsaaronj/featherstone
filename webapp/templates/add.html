@@ -19,7 +19,8 @@
           placeholder="A theme like “grace”, or describe it: “a verse about how missionary work can cover a multitude of sins”">{{ topic }}</textarea>
         <p class="help">{% if ai_ready %}A word or two, or describe the verse you have in mind.{% if default_topic %} Leave it blank for your default theme, {{ default_topic }}.{% endif %}{% else %}Needs an OpenAI API key in Settings → Connections.{% endif %}</p>
       </div>
-      <button class="btn secondary" type="submit" name="action" value="suggest" {% if not ai_ready %}disabled{% endif %}>{{ icon('spark', 20) }}{{ 'Find a different verse' if r.current else 'Find a verse' }}</button>
+      <button class="btn secondary" type="submit" name="action" value="suggest" {% if not ai_ready %}disabled{% endif %}
+        {% if r.current %}data-searched="{{ topic }}"{% endif %}>{{ icon('spark', 20) }}Find a verse</button>
     </form>
 
     {% if r.current %}
@@ -30,7 +31,7 @@
       </div>
       {% if r.text %}<div class="scripture">{% for p in r.text.split('\n\n') %}<p>{{ p }}</p>{% endfor %}</div>
       {% else %}<p class="help">Couldn't load the text just now. It's fetched again when you add it.</p>{% endif %}
-      <form method="post" class="suggestion-actions sticky-actions" data-busy="Adding…">
+      <form method="post" class="suggestion-actions sticky-actions" data-busy="Finding another…">
         <input type="hidden" name="reference" value="{{ r.current }}">
         <input type="hidden" name="origin" value="ai">
         <button class="btn" type="submit" name="action" value="add">Add to Backlog</button>
@@ -94,6 +95,14 @@
       if (b && !b.disabled) topic.form.requestSubmit(b);
     }
   });
+  // With a suggestion showing, the search button waits until the description
+  // changes; "Skip and suggest another" covers another verse for the same search.
+  var search = document.querySelector('button[data-searched]');
+  if (topic && search) {
+    var sync = function () { search.hidden = topic.value.trim() === search.dataset.searched.trim(); };
+    topic.addEventListener("input", sync);
+    sync();
+  }
   // AI calls take a moment: show it, and stop double taps.
   document.querySelectorAll("form[data-busy]").forEach(function (f) {
     f.addEventListener("submit", function (e) {

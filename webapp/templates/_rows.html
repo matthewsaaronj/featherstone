@@ -1,10 +1,11 @@
 {% from "_icons.html" import icon %}
-{% macro verse_row(it, show_stage=false) -%}
+{% macro verse_row(it, show_stage=false, up_next=false) -%}
 <a class="row{{ ' urgent' if it.urgent }}" href="{{ url_for('main.verse', vid=it.verse.id) }}">
   <span class="row-main">
     <span class="row-title">{{ it.verse.display_ref }}</span>
     <span class="row-sub">
       {%- if it.urgent %}<span class="today-badge">Do today</span>{% endif -%}
+      {%- if up_next %}<span class="today-badge next-badge">Up next</span>{% endif -%}
       {%- if show_stage %}{{ STAGE_TITLES[it.verse.stage] }} · {% endif -%}
       {{ it.label }}
       {%- if it.struggling %} · <span class="warn">struggling</span>{% elif it.needs_work %} · <span class="warn">needs work</span>{% endif %}

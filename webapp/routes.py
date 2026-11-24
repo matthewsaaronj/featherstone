@@ -72,6 +72,7 @@ def verse(vid: str):
         reviews=v.reviews[:8], overdue=bool(s and schedule.is_overdue(s, today())),
         struggling=svc.struggling(v), move_back=svc.MOVE_BACK.get(v.stage),
         memorizing=(svc.memorize_verse() == v),
+        is_up_next=(v.stage == "backlog" and svc.up_next() == v),
     )
 
 
@@ -102,6 +103,17 @@ def verse_memorize(vid: str):
     db.session.commit()
     flash(f"{v.display_ref} is your verse of the day.")
     return redirect(url_for("main.index"))
+
+
+@bp.post("/verse/<vid>/up-next")
+def verse_up_next(vid: str):
+    v = db.session.get(Verse, vid) or abort(404)
+    if v.stage != "backlog":
+        abort(400)
+    svc.put_up_next(v)
+    db.session.commit()
+    flash(f"{v.display_ref} is up next. It starts on the next auto-add day.")
+    return redirect(url_for("main.verse", vid=v.id))
 
 
 @bp.post("/verse/<vid>/start")

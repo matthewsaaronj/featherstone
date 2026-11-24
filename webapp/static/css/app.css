@@ -337,6 +337,7 @@ select.input { appearance: none; -webkit-appearance: none; padding-right: 40px; 
 .today-badge { display: inline-block; white-space: nowrap; margin-right: 6px; padding: 0 7px; border-radius: 999px;
   font-size: 11px; font-weight: 600; line-height: 18px; vertical-align: 1px;
   color: var(--bad); background: color-mix(in srgb, #D6453B 14%, transparent); }
+.today-badge.next-badge { color: var(--accent-soft-ink); background: var(--accent-soft); }
 .bad { color: var(--bad); }
 .minibar { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; width: 56px; }
 .minibar .track { width: 56px; height: 5px; border-radius: 3px; background: var(--dot-off); overflow: hidden; }

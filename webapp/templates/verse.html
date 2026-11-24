@@ -10,7 +10,7 @@
 <main class="content" style="padding-top: 4px;">
   <div class="verse-head">
     <h1>{{ v.display_ref }}</h1>
-    <p>{% if s %}{{ STAGE_TITLES[v.stage] }} · {{ label }}{% else %}In Backlog{% if v.backlog_pos %} · waiting to start{% endif %}{% endif %}</p>
+    <p>{% if s %}{{ STAGE_TITLES[v.stage] }} · {{ label }}{% else %}In Backlog · {{ 'up next' if is_up_next else 'waiting to start' }}{% endif %}</p>
   </div>
 
   {% if v.stage != 'backlog' %}
@@ -53,9 +53,16 @@
   </form>
   {% if v.retry_date and v.retry_date > today %}<p class="row-sub" style="margin: -10px 8px 0;">Missed today. It comes back tomorrow to try again{% if open_until and open_until > today %}, and counts through {{ open_until|nice_date(true) }}{% endif %}.</p>{% endif %}
   {% else %}
-  <form method="post" action="{{ url_for('main.verse_start', vid=v.id) }}" class="actions">
-    <button class="btn" type="submit">Start in Daily today</button>
-  </form>
+  <div class="actions">
+    <form method="post" action="{{ url_for('main.verse_start', vid=v.id) }}">
+      <button class="btn" type="submit">Start in Daily today</button>
+    </form>
+    {% if is_up_next %}<button class="btn secondary" type="button" disabled>{{ icon('check', 18) }}Up next</button>
+    {% else %}<form method="post" action="{{ url_for('main.verse_up_next', vid=v.id) }}">
+      <button class="btn secondary" type="submit">Up next</button>
+    </form>{% endif %}
+  </div>
+  <p class="row-sub" style="margin: -10px 8px 0;">{% if is_up_next %}It starts in Daily on the next auto-add day.{% else %}Up next puts it at the top of the Backlog, so it starts on the next auto-add day.{% endif %}</p>
   {% endif %}
 
   <article class="group" style="gap: 10px;">

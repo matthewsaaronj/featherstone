@@ -50,6 +50,39 @@ def test_intake_respects_cadence(app):
     assert svc.intake(DAY + timedelta(days=7), cfg).reference == "Ether 12:27"
 
 
+def test_up_next_jumps_the_backlog(app):
+    svc.add_verse("Alma 32:21")
+    svc.add_verse("Ether 12:27")
+    third = svc.add_verse("Moroni 10:4-5").verse
+    assert svc.up_next().reference == "Alma 32:21"
+    svc.put_up_next(third)
+    db.session.commit()
+    assert svc.up_next() == third
+    ether = Verse.query.filter_by(reference="Ether 12:27").one()
+    svc.put_up_next(ether)                       # the latest pick goes first
+    db.session.commit()
+    assert svc.up_next() == ether
+    assert svc.intake(DAY, svc.get_settings(), force=True) == ether
+    assert svc.up_next() == third
+
+
+def test_up_next_page(app):
+    cfg = svc.get_settings()
+    cfg["auto_add"]["every_n_days"] = 0          # keep page loads from starting verses
+    svc.save_settings(cfg)
+    svc.add_verse("Alma 32:21")
+    v = svc.add_verse("Ether 12:27").verse
+    client = app.test_client()
+    assert client.post(f"/verse/{v.id}/up-next").status_code == 302
+    assert svc.up_next() == v
+    assert "In Backlog · up next" in client.get(f"/verse/{v.id}").get_data(as_text=True)
+    rows = client.get("/stage/backlog").get_data(as_text=True)
+    assert rows.index("Up next") < rows.index("Alma 32:21")
+    svc.start_verse(v, DAY)
+    db.session.commit()
+    assert client.post(f"/verse/{v.id}/up-next").status_code == 400
+
+
 def test_intake_off_when_zero(app):
     svc.add_verse("Alma 32:21")
     cfg = svc.get_settings()

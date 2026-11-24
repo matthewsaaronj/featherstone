@@ -19,7 +19,7 @@
 {% block content %}
 <main class="content">
   {% if items %}
-  <div class="list">{% for it in items %}{{ verse_row(it) }}{% endfor %}</div>
+  <div class="list">{% for it in items %}{{ verse_row(it, up_next=(stage == 'backlog' and loop.first)) }}{% endfor %}</div>
   {% if stage != 'backlog' %}
   <form method="post" action="{{ url_for('main.practice') }}">
     <input type="hidden" name="stage" value="{{ stage }}">
@@ -27,7 +27,7 @@
   </form>
   <p class="row-sub" style="margin: -10px 8px 0;">Practice doesn't count toward a stage, except for verses due today.</p>
   {% endif %}
-  {% if stage == 'backlog' %}<p class="row-sub" style="margin: 0 8px;">The top verse moves into Daily on the next auto-add day. Open a verse to start it now.</p>{% endif %}
+  {% if stage == 'backlog' %}<p class="row-sub" style="margin: 0 8px;">The verse marked Up next moves into Daily on the next auto-add day. Open a verse to start it now or put it up next.</p>{% endif %}
   {% else %}
   <div class="empty">
     <p class="serif">No verses in {{ STAGE_TITLES[stage] }}</p>

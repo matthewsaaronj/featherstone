@@ -208,8 +208,7 @@ def intake(on: date, cfg: dict, force: bool = False) -> Optional[Verse]:
     """
     if not force and not _intake_allowed(on, cfg):
         return None
-    nxt = (Verse.query.filter_by(stage="backlog")
-           .order_by(Verse.backlog_pos.is_(None), Verse.backlog_pos, Verse.created_at).first())
+    nxt = up_next()
     if nxt is None and cfg["auto_add"].get("chatgpt_fallback") and ai.available(openai_key()):
         exclusions = [v.reference for v in Verse.query.all()]
         suggestion = ai.suggest(cfg["auto_add"].get("topic_default"), exclusions, api_key=openai_key())
@@ -436,7 +435,7 @@ def stage_view(stage: str, on: date) -> list[Item]:
     cfg = get_settings()
     q = Verse.query.filter_by(stage=stage)
     if stage == "backlog":
-        q = q.order_by(Verse.backlog_pos.is_(None), Verse.backlog_pos, Verse.created_at)
+        q = _backlog_order(q)
         return [_item(v, on, cfg) for v in q.all()]
     items = [_item(v, on, cfg) for v in q.all()]
     items.sort(key=lambda i: (i.due or date.max, i.verse.reference))
@@ -479,6 +478,21 @@ def rhythm(v: Verse) -> Optional[str]:
     return None
 
 
+def _backlog_order(q):
+    return q.order_by(Verse.backlog_pos.is_(None), Verse.backlog_pos, Verse.created_at)
+
+
+def up_next() -> Optional[Verse]:
+    """The Backlog verse the next automatic add will start."""
+    return _backlog_order(Verse.query.filter_by(stage="backlog")).first()
+
+
+def put_up_next(v: Verse) -> None:
+    """Move a Backlog verse to the top of the queue."""
+    first = db.session.query(db.func.min(Verse.backlog_pos)).scalar()
+    v.backlog_pos = (1 if first is None else first) - 1
+
+
 def move_verse(v: Verse, stage: str, on: date, done: int = 0) -> None:
     """Move a verse to any stage by hand, logged in its review history.
 
@@ -490,9 +504,8 @@ def move_verse(v: Verse, stage: str, on: date, done: int = 0) -> None:
     cfg = get_settings()
     before = v.stage
     if stage == "backlog":
-        first = db.session.query(db.func.min(Verse.backlog_pos)).scalar()
         v.stage, v.done, v.extra, v.due_date, v.retry_date = "backlog", 0, 0, None, None
-        v.backlog_pos = (first or 1) - 1
+        put_up_next(v)
     else:
         wd = v.anchor_weekday if v.anchor_weekday is not None else on.weekday()
         day = v.anchor_day or on.day
