@@ -282,7 +282,8 @@ textarea.input { min-height: 160px; font-family: var(--serif); line-height: 1.6;
 .reveal-toggle:checked + .hint-card .when-shown { display: inline; }
 .reveal-toggle:checked + .hint-card div.when-shown { display: block; }
 .reveal-toggle:checked + .hint-card .when-hidden { display: none; }
-.reveal-toggle:checked + .hint-card .w { color: var(--accent-soft-ink); background: var(--accent-soft); }
+.reveal-toggle:checked + .hint-card .w,
+.hint-text.revealed .w { color: var(--accent-soft-ink); background: var(--accent-soft); }
 
 /* answer screen */
 .verdict { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-radius: 12px; font-weight: 600; font-size: 15px; }

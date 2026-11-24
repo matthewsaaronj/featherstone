@@ -42,7 +42,8 @@
     </p>
     <div class="ladder">
       {% if plan.support == 'none' %}<button class="btn secondary small" type="button" data-show="letters">First letters</button>{% endif %}
-      {% if plan.support != 'full' %}<button class="btn secondary small" type="button" data-show="full">Show verse</button>{% endif %}
+      {% if plan.support == 'blanks' %}<button class="btn secondary small" type="button" data-show="full">Show missing words</button>
+      {% elif plan.support != 'full' %}<button class="btn secondary small" type="button" data-show="full">Show verse</button>{% endif %}
     </div>
     {% else %}
     <p class="recite-note">No text saved for this verse yet.</p>
@@ -72,7 +73,13 @@
     card.querySelectorAll("[data-show]").forEach(function (b) {
       b.addEventListener("click", function () {
         var view = b.dataset.show;
-        card.querySelectorAll("[data-view]").forEach(function (el) { el.hidden = el.dataset.view !== view; });
+        var blanks = card.querySelector('[data-view="blanks"]');
+        if (view === "full" && blanks && !blanks.hidden) {
+          // Fill the blanks in place, keeping the verse's layout.
+          blanks.classList.add("revealed");
+        } else {
+          card.querySelectorAll("[data-view]").forEach(function (el) { el.hidden = el.dataset.view !== view; });
+        }
         b.hidden = true;
         if (view === "full") {
           card.querySelectorAll("[data-show]").forEach(function (x) { x.hidden = true; });
