@@ -19,7 +19,7 @@
 {% endblock %}
 {% block content %}
 <main class="content">
-  {% if memorize %}{{ memorize_row(memorize) }}{% endif %}
+  {% if memorize %}{{ memorize_row(memorize, also_carry) }}{% endif %}
 
   {% if overdue %}
   <section class="group">

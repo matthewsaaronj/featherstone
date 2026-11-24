@@ -5,7 +5,7 @@
 {% block header %}
 <header class="mz-head">
   <a class="icon-btn" href="{{ url_for('main.index') }}" aria-label="Close">{{ icon('close', 22) }}</a>
-  <p class="eyebrow">Memorizing</p>
+  <p class="eyebrow">{{ 'Memorizing' if current else 'Practice' }}</p>
   <a class="mz-details" href="{{ url_for('main.verse', vid=v.id) }}">Details</a>
 </header>
 {% endblock %}
@@ -30,6 +30,11 @@
   </div>
   {% else %}
   <p class="mz-text mz-empty">No text yet. Open Details to fetch it.</p>
+  {% endif %}
+  {% if not current %}
+  <form method="post" action="{{ url_for('main.verse_memorize', vid=v.id) }}" class="mz-pin">
+    <button class="btn secondary small" type="submit">Make this my verse of the day</button>
+  </form>
   {% endif %}
 </main>
 {% if v.text %}

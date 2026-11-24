@@ -14,7 +14,7 @@ from typing import Optional
 from flask import current_app
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-from scripture import ai, choices, hints, refs, schedule, texts
+from scripture import ai, choices, clues, hints, refs, schedule, texts
 from scripture.settings import DEFAULTS, from_agent_config, merged
 
 from .models import KeyValue, Review, Verse, db
@@ -303,6 +303,7 @@ class Item:
     done: int = 0
     total: int = 0
     struggling: bool = False
+    needs_work: bool = False
     urgent: bool = False                # do it today or the stage gets longer (again)
     open_until: Optional[date] = None   # last day a late review still counts
 
@@ -317,6 +318,7 @@ def _item(v: Verse, on: date, cfg: dict, practice: bool = False) -> Item:
         return Item(v, STAGE_TITLES.get(v.stage, v.stage), None)
     it = Item(v, schedule.label(s, cfg), s.due, overdue=schedule.is_overdue(s, on),
               practice=practice, struggling=struggling(v), open_until=schedule.window_end(s, cfg))
+    it.needs_work = not it.struggling and needs_work(v)
     total = s.required(cfg)
     if total is None:  # Mastered: no fixed length
         return it
@@ -420,7 +422,7 @@ def today_view(on: date) -> dict:
         lst.sort(key=lambda i: (not i.urgent, -i.verse.extra, i.verse.reference))
     n_due = len(overdue) + sum(len(l) for l in due_by_stage.values())
     return {"overdue": overdue, "due_by_stage": due_by_stage, "practice": practice,
-            "memorize": memorize_verse(), "n_due": n_due, "n_overdue": len(overdue), "counts": stage_counts()}
+            "memorize": (m := memorize_verse()), "also_carry": also_carry(m), "n_due": n_due, "n_overdue": len(overdue), "counts": stage_counts()}
 
 
 def stage_counts() -> dict[str, int]:
@@ -505,7 +507,7 @@ def move_verse(v: Verse, stage: str, on: date, done: int = 0) -> None:
     db.session.commit()
 
 
-QUIZ_MODES = ("text_to_ref", "ref_to_text")
+QUIZ_MODES = ("both", "text_to_ref", "ref_to_text")
 
 
 def review_queue(on: date) -> list[Verse]:
@@ -518,24 +520,37 @@ def review_queue(on: date) -> list[Verse]:
     return [i.verse for i in items]
 
 
-def choose_mode(v: Verse, on: date) -> str:
-    """Pick the quiz direction so each verse is practiced both ways about equally.
+def _seed(v: Verse, on: date, what: str) -> int:
+    return int(texts.sha1(f"{v.id}|{on.isoformat()}|{what}")[:8], 16)
 
-    A verse's very first review is reference → text (learn the words with their
-    reference). After that, whichever direction it has had less of; ties are
-    broken by a stable per-day coin flip so the page doesn't change on reload.
-    """
-    rows = (db.session.query(Review.mode, db.func.count())
-            .filter(Review.verse_id == v.id, Review.mode.in_(QUIZ_MODES))
-            .group_by(Review.mode).all())
-    counts = {m: n for m, n in rows}
-    a, b = counts.get("text_to_ref", 0), counts.get("ref_to_text", 0)
-    if a == 0 and b == 0:
-        return "ref_to_text"
-    if a != b:
-        return "text_to_ref" if a < b else "ref_to_text"
-    flip = int(texts.sha1(f"{v.id}|{on.isoformat()}")[:2], 16) % 2
-    return QUIZ_MODES[flip]
+
+@dataclass
+class ReviewPlan:
+    """What a two-step review shows: the clue for "Which verse is this?", then
+    the help on offer for "Now say the whole verse"."""
+    clue_kind: str          # full | sentence | phrase
+    clue: str
+    support: str            # full | letters | blanks | none
+    tokens: list            # words with blanks, for support == "blanks"
+
+
+def review_plan(v: Verse, on: date, cfg: dict) -> ReviewPlan:
+    pos = v.done or 0
+    text = v.text or ""
+    kind = clues.clue_kind(v.stage, pos, _seed(v, on, "cluekind"))
+    clue = clues.clue(text, kind, _seed(v, on, "clue")) if text else ""
+    if kind != "full" and " ".join(clue.split()) == " ".join(text.split()):
+        kind = "full"  # a short verse: the "sentence" is the whole thing
+    support = "none"
+    if text and cfg["obfuscation"].get("enabled", True):
+        support = clues.support_kind(v.stage, pos, _seed(v, on, "support"))
+    tokens = []
+    if support == "blanks":
+        ratio = min(hints.visible_ratio(v.stage, pos, cfg), 0.7)
+        ratio = max(ratio, 0.1)
+        tokens = hints.tokenize(text, ratio, hints.seed_for(v.id, v.stage, pos, v.hint_salt),
+                                int(cfg["obfuscation"].get("min_word_len", 3)))
+    return ReviewPlan(kind if text else "full", clue or text, support, tokens)
 
 
 ANSWER_STYLES = ("type", "choice", "mix")
@@ -544,7 +559,7 @@ ANSWER_STYLES = ("type", "choice", "mix")
 def answer_style(v: Verse, on: date, cfg: dict) -> str:
     """How to answer "Which verse is this?": "type" or "choice" (multiple choice).
     With the "mix" setting it alternates by a stable per-verse, per-day coin flip."""
-    if not choices_allowed(v):
+    if not choices_allowed(v, cfg):
         return "type"
     quiz = cfg.get("quiz", {})
     style = quiz.get("answer_style", "mix")
@@ -555,9 +570,15 @@ def answer_style(v: Verse, on: date, cfg: dict) -> str:
     return "choice" if roll < share else "type"
 
 
-def choices_allowed(v: Verse) -> bool:
-    """Mastered verses are always typed: no multiple choice to lean on."""
-    return v.stage != "mastered" and v.ref is not None
+def choices_allowed(v: Verse, cfg: Optional[dict] = None) -> bool:
+    """Mastered verses are always typed: no multiple choice to lean on. In Daily,
+    choices stop after the first few days (quiz.choice_days_daily)."""
+    if v.stage == "mastered" or v.ref is None:
+        return False
+    if v.stage == "daily":
+        days = int((cfg or get_settings()).get("quiz", {}).get("choice_days_daily", 5))
+        return (v.done or 0) < days
+    return True
 
 
 # A verse is "struggling" after this many misses in its last few quiz reviews
@@ -578,6 +599,42 @@ def struggling(v: Verse) -> bool:
             if len(recent) == STRUGGLE_WINDOW:
                 break
     return sum(r.result == "missed" for r in recent) >= STRUGGLE_MISSES
+
+
+# A verse "needs work" when NEEDS_WORK of its last NEEDS_WORK_WINDOW quiz
+# reviews were Shaky or Missed. Softer than struggling: no move is suggested.
+NEEDS_WORK, NEEDS_WORK_WINDOW = 2, 4
+
+
+def shaky_count(v: Verse) -> int:
+    """Shaky or Missed among the last few quiz reviews (since the last manual move)."""
+    recent = []
+    for r in v.reviews:  # newest first
+        if r.mode == "manual":
+            break
+        if r.mode in QUIZ_MODES and not r.practice:
+            recent.append(r)
+            if len(recent) == NEEDS_WORK_WINDOW:
+                break
+    return sum(r.result in ("shaky", "missed") for r in recent)
+
+
+def needs_work(v: Verse) -> bool:
+    return v.is_active and shaky_count(v) >= NEEDS_WORK
+
+
+def also_carry(exclude: Optional[Verse]) -> Optional[tuple[Verse, int]]:
+    """The one verse most worth extra practice besides the verse of the day."""
+    best = None
+    for v in Verse.query.filter(Verse.stage.in_(schedule.ACTIVE_STAGES)).all():
+        if exclude is not None and v.id == exclude.id:
+            continue
+        n = shaky_count(v)
+        if n >= NEEDS_WORK:
+            key = (n, -schedule.ACTIVE_STAGES.index(v.stage), v.extra)
+            if best is None or key > best[0]:
+                best = (key, v, n)
+    return (best[1], best[2]) if best else None
 
 
 def choice_options(v: Verse, on: date) -> list[refs.Ref]:

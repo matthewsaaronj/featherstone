@@ -128,7 +128,7 @@
       <div class="row" style="min-height: 56px;">
         <span class="row-main">
           <span style="font-size: 15px; font-weight: 500;">{{ (r.slot_date or r.reviewed_at.date())|nice_date }} · {{ STAGE_TITLES[r.stage] }}{% if r.position is not none %} {{ r.position + 1 }}{% endif %}</span>
-          <span class="row-sub">{% if r.mode == 'manual' %}Moved by hand{% if r.answer in STAGE_TITLES %} from {{ STAGE_TITLES[r.answer] }}{% endif %}{% elif r.made_up %}Practice · made up a missed review{% elif r.practice %}Practice{% elif r.mode == 'text_to_ref' %}Text → reference{% elif r.mode == 'ref_to_text' %}Reference → text{% elif r.mode == 'import' %}Imported{% else %}Not reviewed in time{% endif %}</span>
+          <span class="row-sub">{% if r.mode == 'manual' %}Moved by hand{% if r.answer in STAGE_TITLES %} from {{ STAGE_TITLES[r.answer] }}{% endif %}{% elif r.made_up %}Practice · made up a missed review{% elif r.practice %}Practice{% elif r.mode == 'both' %}Reference and verse{% elif r.mode == 'text_to_ref' %}Text → reference{% elif r.mode == 'ref_to_text' %}Reference → text{% elif r.mode == 'import' %}Imported{% else %}Not reviewed in time{% endif %}</span>
         </span>
         <span class="result {{ r.result }}">{{ {'got': 'Got it', 'shaky': 'Shaky', 'missed': 'Missed', 'skipped': 'Skipped', 'moved': 'To ' ~ STAGE_TITLES[r.stage]}[r.result] }}</span>
       </div>

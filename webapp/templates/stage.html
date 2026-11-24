@@ -25,7 +25,7 @@
     <input type="hidden" name="stage" value="{{ stage }}">
     <button class="btn secondary" type="submit">Practice all {{ items|length }}</button>
   </form>
-  <p class="row-sub" style="margin: -10px 8px 0;">Practice doesn't count toward a stage, except for verses due today.{% if stage in ('daily', 'weekly') %} A “Got it” can make up one missed review per verse per day{% if stage == 'weekly' %}, from 3 days after the miss{% endif %}.{% endif %}</p>
+  <p class="row-sub" style="margin: -10px 8px 0;">Practice doesn't count toward a stage, except for verses due today.</p>
   {% endif %}
   {% if stage == 'backlog' %}<p class="row-sub" style="margin: 0 8px;">The top verse moves into Daily on the next auto-add day. Open a verse to start it now.</p>{% endif %}
   {% else %}

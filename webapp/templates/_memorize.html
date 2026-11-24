@@ -1,6 +1,6 @@
 {% from "_icons.html" import icon %}
 {# The verse of the day: one row on Today. Practice happens on the verse page. #}
-{% macro memorize_row(v) %}
+{% macro memorize_row(v, extra=none) %}
 <section class="group">
   <h2 class="eyebrow">Memorizing</h2>
   <div class="list">
@@ -11,6 +11,16 @@
       </span>
       <span class="chev">{{ icon('chev', 16) }}</span>
     </a>
+    {% if extra %}{% set ev, n = extra %}
+    <a class="row" href="{{ url_for('main.memorize_verse', vid=ev.id) }}">
+      <span class="row-main">
+        <span class="row-sub">Also carry</span>
+        <span class="row-title">{{ ev.display_ref }}</span>
+        <span class="row-sub"><span class="warn">Shaky or missed {{ n }} of the last 4</span></span>
+      </span>
+      <span class="chev">{{ icon('chev', 16) }}</span>
+    </a>
+    {% endif %}
   </div>
 </section>
 {% endmacro %}

@@ -1,17 +1,23 @@
 {% extends "base.html" %}
-{% from "_quiz.html" import quiz_header, stage_pill, scripture_text, grade_buttons with context %}
+{% from "_quiz.html" import quiz_header, stage_pill, scripture_text with context %}
 {% block title %}Review · Featherstone{% endblock %}
 {% block app_class %}quiz{% endblock %}
 {% block header %}{{ quiz_header() }}{% endblock %}
 {% block tabbar %}{% endblock %}
 {% block content %}
 <main class="content quiz-body">
-  {% if mode == 'text_to_ref' %}
   <div class="quiz-top">
     <span class="eyebrow">Which verse is this?</span>
     {{ stage_pill() }}
   </div>
+  {% if plan.clue_kind == 'full' %}
   <article class="card scripture quiz-card">{{ scripture_text(v, numbers=false) }}</article>
+  {% else %}
+  <article class="card scripture quiz-card clue-card">
+    <p class="clue-label">{{ 'A sentence from the verse' if plan.clue_kind == 'sentence' else 'A phrase from the verse' }}</p>
+    <p class="clue-text">{{ clue_display(v.text, plan.clue) }}</p>
+  </article>
+  {% endif %}
 
   {% if style == 'choice' and options %}
   <form method="post" action="{{ url_for('main.review_check', vid=v.id) }}" class="stack quiz-form">
@@ -42,36 +48,6 @@
       {% if choices_allowed %}<a class="switch-style" href="{{ url_for('main.review', answer='choice') }}">Show choices instead</a>{% endif %}
     </div>
   </form>
-  {% endif %}
-
-  {% else %}
-  <div class="quiz-top">
-    <span class="eyebrow">Recite the verse</span>
-    {{ stage_pill() }}
-  </div>
-  <h1 class="quiz-ref">{{ v.display_ref }}</h1>
-
-  <input type="checkbox" id="reveal" class="reveal-toggle">
-  <article class="card quiz-card hint-card">
-    {% if tokens %}
-    <div class="scripture hint-text">{% for t in tokens %}{% if t.hidden %}<span class="w">{{ t.text }}</span>{% else %}{{ t.text }}{% endif %}{% endfor %}</div>
-    {% set hidden = tokens|selectattr('hidden')|list|length %}
-    {% set words = tokens|selectattr('is_word')|list|length %}
-    <div class="hint-foot">
-      <span class="row-sub">{% if hidden %}{{ (100 * hidden / words)|round|int }}% of words hidden{% else %}Full text while you learn it{% endif %}</span>
-      {% if hidden %}<label for="reveal" class="btn secondary small"><span class="when-hidden">Show full verse</span><span class="when-shown">Hide again</span></label>{% endif %}
-    </div>
-    {% else %}
-    <p class="recite-note when-hidden">{% if v.text %}Recite it from memory, then check yourself.{% else %}No text saved for this verse yet.{% endif %}</p>
-    {% if v.text %}<div class="scripture full-text when-shown">{{ scripture_text(v) }}</div>
-    <div class="hint-foot"><span></span><label for="reveal" class="btn secondary small"><span class="when-hidden">Show verse</span><span class="when-shown">Hide again</span></label></div>{% endif %}
-    {% endif %}
-  </article>
-
-  <div class="quiz-grade">
-    <p class="grade-q">How did you do?</p>
-    {{ grade_buttons('ref_to_text') }}
-  </div>
   {% endif %}
 
   <form method="post" action="{{ url_for('main.review_skip', vid=v.id) }}" class="skip">

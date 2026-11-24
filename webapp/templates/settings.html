@@ -130,7 +130,7 @@
     <h2 class="eyebrow">Quiz</h2>
     <div class="list">
       <div class="setting">
-        <span class="row-main"><label class="name" for="answer_style">“Which verse is this?” answers</label><span class="row-sub">Multiple choice uses other passages from the same book. With Mix, choices get rarer as a verse advances: half the time in Daily, a quarter in Weekly, 1 in 10 in Monthly. Mastered is always typed.</span></span>
+        <span class="row-main"><label class="name" for="answer_style">“Which verse is this?” answers</label><span class="row-sub">Multiple choice uses other passages from the same book. With Mix, choices get rarer as a verse advances: half the time in the first 5 days of Daily, a quarter in Weekly, 1 in 10 in Monthly. Mastered is always typed.</span></span>
         <select class="input" style="width: auto; min-height: 44px; padding: 8px 12px; font-size: 15px;" id="answer_style" name="answer_style">
           {% for val, lab in [('mix', 'Mix both'), ('type', 'Type it'), ('choice', 'Multiple choice')] %}<option value="{{ val }}" {% if cfg.quiz.answer_style == val %}selected{% endif %}>{{ lab }}</option>{% endfor %}
         </select>

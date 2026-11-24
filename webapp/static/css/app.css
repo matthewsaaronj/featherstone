@@ -438,3 +438,16 @@ textarea.input.describe { min-height: 92px; font-family: inherit; line-height: 1
 .mz-controls .btn { flex: 1; font-size: 15px; padding: 0 10px; white-space: nowrap; }
 .mz-controls .btn.icon { flex: none; width: 48px; padding: 0; }
 .mz-foot { padding: 4px 16px calc(12px + env(safe-area-inset-bottom)); }
+
+/* Two-step review */
+.clue-card { display: flex; flex-direction: column; gap: 10px; }
+.clue-label { margin: 0; font-family: var(--sans); font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.clue-text { margin: 0; font-size: 21px; line-height: 1.55; }
+.recite-card { display: flex; flex-direction: column; gap: 12px; }
+.recite-card .scripture p:last-child { margin-bottom: 0; }
+.recite-help { margin: 0; font-size: 14px; color: var(--muted); }
+.recite-help:empty { display: none; }
+.ladder { display: flex; gap: 8px; flex-wrap: wrap; }
+.ladder:not(:has(button:not([hidden]))) { display: none; }
+.grade-note { margin: 8px 4px 0; font-size: 14px; color: var(--muted); }
+.mz-pin { margin-top: 24px; }

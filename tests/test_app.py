@@ -116,35 +116,86 @@ def _start(app, ref="Alma 32:21"):
     return v
 
 
-def test_first_review_is_ref_to_text_then_alternates(app):
-    v = _start(app)
-    assert svc.choose_mode(v, DAY) == "ref_to_text"
-    svc.record_review(v, "got", "ref_to_text", DAY)
-    assert svc.choose_mode(v, DAY + timedelta(days=1)) == "text_to_ref"
-
-
-def test_quiz_flow_ref_to_text(app):
+def test_review_is_two_steps_graded_as_one(app):
     v = _start(app)
     c = app.test_client()
     page = c.get("/review?start=1").get_data(as_text=True)
-    assert "Recite the verse" in page and "Alma 32:21" in page
-    r = c.post(f"/review/{v.id}/grade", data={"result": "got", "mode": "ref_to_text"})
-    assert r.status_code == 302
-    assert v.done == 1
+    assert "Which verse is this?" in page
+    c.post(f"/review/{v.id}/check", data={"answer": "alma 32:21"})
+    page = c.get("/review").get_data(as_text=True)
+    assert "Now say the whole verse" in page and "Correct" in page and "Alma 32:21" in page
+    r = c.post(f"/review/{v.id}/grade", data={"result": "got", "mode": "both"})
+    assert r.status_code == 302 and v.done == 1
+    assert v.reviews[0].mode == "both" and v.reviews[0].result == "got"
     done = c.get("/review").get_data(as_text=True)
     assert "All done for today" in done and "1 verse reviewed" in done
 
 
-def test_quiz_check_grades_typed_reference(app):
+def test_wrong_reference_makes_a_good_recitation_shaky(app):
     v = _start(app)
-    svc.record_review(v, "got", "ref_to_text", DAY)  # next mode: text_to_ref
     c = app.test_client()
-    ans = c.post(f"/review/{v.id}/check", data={"answer": "alma 32:21"}).get_data(as_text=True)
-    assert "Correct" in ans
-    ans = c.post(f"/review/{v.id}/check", data={"answer": "Alma 32:22"}).get_data(as_text=True)
-    assert "Right chapter" in ans
-    ans = c.post(f"/review/{v.id}/check", data={"answer": "", "gave_up": "1"}).get_data(as_text=True)
-    assert "Here it is" in ans
+    c.get("/review?start=1")
+    c.post(f"/review/{v.id}/check", data={"answer": "Alma 32:22"})
+    page = c.get("/review").get_data(as_text=True)
+    assert "Right chapter" in page and "counts as Shaky" in page
+    c.post(f"/review/{v.id}/grade", data={"result": "got", "mode": "both"})
+    assert v.reviews[0].result == "shaky" and v.done == 1
+
+
+def test_gave_up_shows_reference_then_recite(app):
+    v = _start(app)
+    c = app.test_client()
+    c.get("/review?start=1")
+    c.post(f"/review/{v.id}/check", data={"answer": "", "gave_up": "1"})
+    page = c.get("/review").get_data(as_text=True)
+    assert "Here it is" in page and "Now say the whole verse" in page
+    c.post(f"/review/{v.id}/grade", data={"result": "missed", "mode": "both"})
+    assert v.reviews[0].result == "missed" and v.done == 0
+
+
+def test_clue_shrinks_through_daily():
+    from scripture import clues
+    text = ("Therefore God gave unto them commandments, after having made known unto them the plan "
+            "of redemption, that they should not do evil, the penalty thereof being a second death; "
+            "for on such the plan of redemption could have no power.")
+    assert [clues.clue_kind("daily", p, 1) for p in range(7)] == ["full"] * 2 + ["sentence"] * 3 + ["phrase"] * 2
+    for seed in range(20):
+        ph = clues.phrase(text, seed)
+        assert 4 <= len(ph.split()) <= 7 and ph in text
+        se = clues.sentence(text, seed)
+        assert se in text and 7 <= len(se.split()) < len(text.split())
+    assert {clues.phrase(text, s) for s in range(20)} != {clues.phrase(text, 0)}   # varies by day
+    assert clues.support_kind("daily", 0, 1) == "full" and clues.support_kind("mastered", 3, 1) == "none"
+    assert clues.combine("exact", "got") == "got" and clues.combine("wrong", "got") == "shaky"
+    assert clues.display(text, "Therefore God gave unto them commandments") == "Therefore God gave unto them commandments…"
+    assert clues.display("men are, that they might have joy.", "that they might have joy.") == "…that they might have joy."
+    assert clues.combine("exact", "missed") == "missed" and clues.combine("overlap", "shaky") == "shaky"
+
+
+def test_daily_multiple_choice_ends_after_day_five(app):
+    v = _start(app)
+    v.done = 4
+    assert svc.choices_allowed(v)
+    v.done = 5
+    assert not svc.choices_allowed(v)
+
+
+def test_needs_work_and_also_carry(app):
+    a, b = _start(app, "Alma 32:21"), _start(app, "Ether 12:27")
+    svc.record_review(b, "shaky", "both", DAY)
+    svc.record_review(b, "shaky", "both", DAY + timedelta(days=1))
+    db.session.commit()
+    assert svc.needs_work(b) and not svc.needs_work(a)
+    carry, n = svc.also_carry(a)
+    assert carry == b and n == 2
+    app.config["TODAY_OVERRIDE"] = (DAY + timedelta(days=2)).isoformat()
+    svc.pin_memorize(a, DAY)
+    db.session.commit()
+    c = app.test_client()
+    page = c.get("/").get_data(as_text=True)
+    assert "Also carry" in page and "needs work" in page
+    card = c.get(f"/memorize/{b.id}").get_data(as_text=True)
+    assert "Make this my verse of the day" in card and ">Practice<" in card
 
 
 def test_skip_moves_verse_to_end(app):
@@ -167,19 +218,16 @@ def test_grade_rejects_bad_input(app):
 def test_multiple_choice_flow(app):
     v = _start(app, "Doctrine and Covenants 121:34-36")
     svc.add_verse("Doctrine and Covenants 93:1")
-    # A past reference → text review makes today's question text → reference.
-    db.session.add(Review(verse_id=v.id, stage="daily", mode="ref_to_text", result="got", counted=True))
     svc.kv_set("last_upkeep", DAY.isoformat())  # today's upkeep already ran
     db.session.commit()
     c = app.test_client()
     page = c.get("/review?start=1&answer=choice").get_data(as_text=True)
     assert "Choose the reference" in page and "Doctrine and Covenants 93:1" in page
-    right = c.post(f"/review/{v.id}/check", data={"answer": "Doctrine and Covenants 121:34-36",
-                                                   "style": "choice"}).get_data(as_text=True)
-    assert "Correct" in right
-    wrong = c.post(f"/review/{v.id}/check", data={"answer": "Doctrine and Covenants 93:1",
-                                                   "style": "choice"}).get_data(as_text=True)
-    assert "Not quite" in wrong and "You chose" in wrong
+    c.post(f"/review/{v.id}/check", data={"answer": "Doctrine and Covenants 121:34-36", "style": "choice"})
+    assert "Correct" in c.get("/review").get_data(as_text=True)
+    c.post(f"/review/{v.id}/check", data={"answer": "Doctrine and Covenants 93:1", "style": "choice"})
+    wrong = c.get("/review").get_data(as_text=True)
+    assert "Not quite" in wrong and "you chose" in wrong
 
 
 def test_answer_style_setting(app):

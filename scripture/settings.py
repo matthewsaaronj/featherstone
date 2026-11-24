@@ -54,6 +54,8 @@ DEFAULTS: dict[str, Any] = {
         "answer_style": "mix",
         # With "mix": the share of questions that start as multiple choice.
         "choice_share": {"daily": 0.5, "weekly": 0.25, "monthly": 0.1, "mastered": 0.0},
+        # Daily: multiple choice is offered only for the first this-many days.
+        "choice_days_daily": 5,
     },
     "notify": {
         # Phone notifications (Web Push): a morning summary, and an evening

@@ -7,7 +7,7 @@
       {%- if it.urgent %}<span class="today-badge">Do today</span>{% endif -%}
       {%- if show_stage %}{{ STAGE_TITLES[it.verse.stage] }} · {% endif -%}
       {{ it.label }}
-      {%- if it.struggling %} · <span class="warn">struggling</span>{% endif %}
+      {%- if it.struggling %} · <span class="warn">struggling</span>{% elif it.needs_work %} · <span class="warn">needs work</span>{% endif %}
       {%- if it.practice %} · practice retry
       {%- elif it.overdue and it.urgent %} · <span class="bad">late, last day to count</span>
       {%- elif it.overdue %} · <span class="warn">late, counts through {{ it.open_until|nice_date(true) }}</span>

@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import re
 from datetime import date
+from typing import Optional
 
 from flask import (Blueprint, abort, current_app, flash, redirect, render_template,
                    request, session, url_for)
 
-from scripture import ai, refs, schedule, texts
+from scripture import ai, clues, refs, schedule, texts
 
 from . import automation
 from . import services as svc
@@ -34,6 +35,7 @@ THEMES = ("system", "light", "dark")
 def _globals():
     theme = svc.get_settings().get("appearance", {}).get("theme", "system")
     return {"today": today(), "STAGE_TITLES": svc.STAGE_TITLES, "first_letters": svc.first_letters,
+            "clue_display": clues.display,
             "theme": theme if theme in THEMES else "system"}
 
 
@@ -79,7 +81,16 @@ def memorize():
     if v is None:
         flash("No verse to memorize yet. Start one from your Backlog.")
         return redirect(url_for("main.index"))
-    return render_template("memorize.html", tab="today", v=v)
+    return render_template("memorize.html", tab="today", v=v, current=True)
+
+
+@bp.get("/memorize/<vid>")
+def memorize_verse(vid: str):
+    """The same full-screen practice page for any active verse."""
+    v = db.session.get(Verse, vid) or abort(404)
+    if not v.is_active:
+        return redirect(url_for("main.verse", vid=v.id))
+    return render_template("memorize.html", tab="today", v=v, current=(svc.memorize_verse() == v))
 
 
 @bp.post("/verse/<vid>/memorize")
@@ -332,6 +343,15 @@ def _quiz_ctx(v: Verse, s: dict, mode: str) -> dict:
             "pct": round(100 * s["done"] / max(s["total"], 1))}
 
 
+# Each review has two steps for the same verse: "Which verse is this?" from a
+# clue, then "Now say the whole verse". The reference check from step 1 waits
+# in the sitting (s["ref"]) until step 2's self-grade, and the two make one result.
+
+def _ref_result(s: dict, v: Verse) -> Optional[dict]:
+    r = s.get("ref")
+    return r if r and r.get("vid") == v.id else None
+
+
 @bp.get("/review")
 def review():
     if request.args.get("start"):
@@ -342,42 +362,45 @@ def review():
     if v is None:
         return render_template("review_done.html", tab="today", s=s,
                                counts=svc.stage_counts(), practice_set=s.get("set") is not None)
-    mode = svc.choose_mode(v, today())
-    ctx = _quiz_ctx(v, s, mode)
-    if mode == "ref_to_text":
-        ctx["tokens"] = svc.hint_tokens(v, ctx["cfg"])
-    else:
-        # ?answer=type|choice switches style for this question only.
-        style = request.args.get("answer")
-        if style not in ("type", "choice"):
-            style = svc.answer_style(v, today(), ctx["cfg"])
-        if not svc.choices_allowed(v):
-            style = "type"
-        ctx["style"] = style
-        ctx["choices_allowed"] = svc.choices_allowed(v)
-        if style == "choice":
-            ctx["options"] = svc.choice_options(v, today())
-        ctx["books"] = refs.BOOKS
+    ctx = _quiz_ctx(v, s, "both")
+    plan = svc.review_plan(v, today(), ctx["cfg"])
+    ctx["plan"] = plan
+    ref = _ref_result(s, v)
+    if ref is not None:
+        # Step 2: say the whole verse.
+        ctx["ref"] = ref
+        ctx["suggested"] = clues.combine(ref["grade"], "got")
+        return render_template("review_recite.html", **ctx)
+    # Step 1: which verse is this? ?answer=type|choice switches style for this question.
+    style = request.args.get("answer")
+    if style not in ("type", "choice"):
+        style = svc.answer_style(v, today(), ctx["cfg"])
+    if not svc.choices_allowed(v, ctx["cfg"]):
+        style = "type"
+    ctx["style"] = style
+    ctx["choices_allowed"] = svc.choices_allowed(v, ctx["cfg"])
+    if style == "choice":
+        ctx["options"] = svc.choice_options(v, today())
+    ctx["books"] = refs.BOOKS
     return render_template("review.html", **ctx)
 
 
 @bp.post("/review/<vid>/check")
 def review_check(vid: str):
-    """Text → reference: grade the typed reference and show the answer."""
+    """Step 1: grade the reference, then go on to step 2."""
     v = db.session.get(Verse, vid) or abort(404)
     s = _sitting()
     answer = (request.form.get("answer") or "").strip()
     gave_up = request.form.get("gave_up") == "1"
-    chose = request.form.get("style") == "choice"
     if gave_up or not v.ref:
         grade, reading = "wrong", None
     else:
         grade, reading = refs.grade(answer, v.ref)
-    suggested = {"exact": "got", "overlap": "shaky"}.get(grade, "missed")
-    ctx = _quiz_ctx(v, s, "text_to_ref")
-    ctx.update(answer=answer, grade=grade, suggested=suggested, gave_up=gave_up,
-               parsed=reading, chose=chose)
-    return render_template("review_answer.html", **ctx)
+    s["ref"] = {"vid": v.id, "grade": grade, "gave_up": gave_up, "answer": answer,
+                "said": reading.display if reading else answer,
+                "chose": request.form.get("style") == "choice"}
+    _save_sitting(s)
+    return redirect(url_for("main.review"))
 
 
 @bp.post("/review/<vid>/grade")
@@ -389,8 +412,14 @@ def review_grade(vid: str):
         abort(400)
     if v.sched() is None:
         return redirect(url_for("main.review"))
-    svc.record_review(v, result, mode, today(), answer=request.form.get("answer") or None)
     s = _sitting()
+    answer = request.form.get("answer") or None
+    if mode == "both":
+        ref = _ref_result(s, v) or {"grade": "exact", "answer": None}
+        result = clues.combine(ref["grade"], result)
+        answer = ref.get("answer") or None
+        s.pop("ref", None)
+    svc.record_review(v, result, mode, today(), answer=answer)
     s["done"] += 1
     s["results"][result] += 1
     s["skipped"] = [x for x in s["skipped"] if x != v.id]
@@ -435,6 +464,8 @@ def verse_move(vid: str):
 @bp.post("/review/<vid>/skip")
 def review_skip(vid: str):
     s = _sitting()
+    if (s.get("ref") or {}).get("vid") == vid:
+        s.pop("ref", None)
     if vid not in s["skipped"]:
         s["skipped"].append(vid)
     _save_sitting(s)
