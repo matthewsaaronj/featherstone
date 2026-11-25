@@ -1,7 +1,8 @@
 """What each two-step review shows.
 
 Step 1, "Which verse is this?": a clue that shrinks as a verse advances, from
-the whole verse to one sentence to a short phrase, picked fresh each day.
+the whole verse to one sentence to a stretch of at least 10 words, picked
+fresh each day.
 
 Step 2, "Now say the whole verse": the help on offer rotates (full text, first
 letters, words with blanks, or nothing) and thins out as a verse advances.
@@ -46,8 +47,29 @@ def _window(words: list[str], lo: int, hi: int, rnd: random.Random) -> list[str]
     return words[start:start + size]
 
 
+MIN_WORDS = 10   # a clue shorter than a full sentence is at least this long
+
+
+def _clause_runs(flat: str, lo: int, hi: int) -> list[str]:
+    """Runs of whole clauses, each starting at a clause start, lo to hi words."""
+    clauses = [c for c in _CLAUSE_END.split(flat) if c]
+    runs = []
+    for i in range(len(clauses)):
+        n, j = 0, i
+        while j < len(clauses) and n < lo:
+            n += len(_words(clauses[j]))
+            j += 1
+        if lo <= n <= hi:
+            runs.append(clauses[i:j])
+    # Prefer runs that don't trail off into a stub ("And now…") or start with
+    # one: both end clauses at least 4 words.
+    full = [r for r in runs if len(_words(r[-1])) >= 4 and len(_words(r[0])) >= 3]
+    return [" ".join(r) for r in (full or runs)]
+
+
 def sentence(text: str, seed: int) -> str:
-    """One sentence (or a run of clauses about that long) from the verse."""
+    """One full sentence from the verse (or, in one long sentence, a run of
+    whole clauses at least MIN_WORDS long)."""
     rnd = random.Random(seed)
     flat = _flat(text)
     words = _words(flat)
@@ -57,33 +79,24 @@ def sentence(text: str, seed: int) -> str:
     good = [p for p in parts if len(_words(p)) <= 24]
     if len(parts) > 1 and good:
         return rnd.choice(good).rstrip(",;:—– ")
-    # One long sentence: take a run of whole clauses, about 8 to 18 words.
-    clauses = [c for c in _CLAUSE_END.split(flat) if c]
-    runs = []
-    for i in range(len(clauses)):
-        n, j = 0, i
-        while j < len(clauses) and n < 8:
-            n += len(_words(clauses[j]))
-            j += 1
-        if 8 <= n <= 18:
-            runs.append(" ".join(clauses[i:j]))
+    runs = _clause_runs(flat, MIN_WORDS, 18)
     if runs:
         return rnd.choice(runs).rstrip(",;:—– ")
-    return " ".join(_window(words, 10, 16, rnd))
+    return " ".join(_window(words, MIN_WORDS, 16, rnd))
 
 
 def phrase(text: str, seed: int) -> str:
-    """A short phrase (4 to 7 words) from somewhere in the verse."""
+    """The hardest clue: a stretch of whole clauses, MIN_WORDS to 16 words,
+    from anywhere in the verse (it may cross a sentence break)."""
     rnd = random.Random(seed)
     flat = _flat(text)
-    clauses = [_words(c) for c in _CLAUSE_END.split(flat)]
-    usable = [c for c in clauses if len(c) >= 4]
-    if usable:
-        c = rnd.choice(usable)
-        picked = c if len(c) <= 7 else _window(c, 5, 7, rnd)
-    else:
-        picked = _window(_words(flat), 4, 7, rnd)
-    return " ".join(picked).strip(_TRAILING + " ")
+    words = _words(flat)
+    if len(words) <= MIN_WORDS + 2:
+        return flat.strip(_TRAILING + " ")
+    runs = _clause_runs(flat, MIN_WORDS, 16)
+    picked = rnd.choice(runs) if runs else " ".join(_window(words, MIN_WORDS, 14, rnd))
+    # Keep a closing . ? ! so a clue that ends a sentence doesn't get "…".
+    return picked.strip(" ").rstrip(",;:—–- ").lstrip(_TRAILING + " ")
 
 
 def clue(text: str, kind: str, seed: int) -> str:

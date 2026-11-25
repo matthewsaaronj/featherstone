@@ -194,7 +194,7 @@ def test_clue_shrinks_through_daily():
     assert [clues.clue_kind("daily", p, 1) for p in range(7)] == ["full"] * 2 + ["sentence"] * 3 + ["phrase"] * 2
     for seed in range(20):
         ph = clues.phrase(text, seed)
-        assert 4 <= len(ph.split()) <= 7 and ph in text
+        assert 10 <= len(ph.split()) <= 16 and ph in text
         se = clues.sentence(text, seed)
         assert se in text and 7 <= len(se.split()) < len(text.split())
     assert {clues.phrase(text, s) for s in range(20)} != {clues.phrase(text, 0)}   # varies by day
