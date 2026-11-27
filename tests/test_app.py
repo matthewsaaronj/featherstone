@@ -186,6 +186,23 @@ def test_gave_up_shows_reference_then_recite(app):
     assert v.reviews[0].result == "missed" and v.done == 0
 
 
+def test_clue_avoids_filler():
+    from scripture import clues
+    alma32 = ("And now as I said concerning faith--faith is not to have a perfect knowledge of things; "
+              "therefore if ye have faith ye hope for things which are not seen, which are true. "
+              "And now, behold, I say unto you, and I would that ye should remember, that God is "
+              "merciful unto all who believe on his name; therefore he desireth, in the first place, "
+              "that ye should believe, yea, even on his word.")
+    others = ["And now, behold, I say unto you, my brethren, that these things are true.",
+              "Behold, I say unto you that ye should remember."]
+    df = clues.doc_freq(others)
+    assert clues.distinctiveness("which are true. And now, behold, I say unto you", df) < 1
+    for seed in range(40):
+        ph = clues.phrase(alma32, seed, df)
+        assert "which are true. And now, behold, I say unto you" not in ph
+        assert clues.distinctiveness(ph, df) >= clues.FAIR_SCORE
+
+
 def test_clue_shrinks_through_daily():
     from scripture import clues
     text = ("Therefore God gave unto them commandments, after having made known unto them the plan "

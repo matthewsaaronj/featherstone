@@ -547,11 +547,18 @@ class ReviewPlan:
     tokens: list            # words with blanks, for support == "blanks"
 
 
+def _other_words(v: Verse) -> dict[str, int]:
+    """Word counts across every other verse, so a clue picks words that set
+    this verse apart."""
+    texts = [t for (vid, t) in db.session.query(Verse.id, Verse.text) if vid != v.id and t]
+    return clues.doc_freq(texts)
+
+
 def review_plan(v: Verse, on: date, cfg: dict) -> ReviewPlan:
     pos = v.done or 0
     text = v.text or ""
     kind = clues.clue_kind(v.stage, pos, _seed(v, on, "cluekind"))
-    clue = clues.clue(text, kind, _seed(v, on, "clue")) if text else ""
+    clue = clues.clue(text, kind, _seed(v, on, "clue"), _other_words(v)) if text and kind != "full" else ""
     if kind != "full" and " ".join(clue.split()) == " ".join(text.split()):
         kind = "full"  # a short verse: the "sentence" is the whole thing
     support = "none"
