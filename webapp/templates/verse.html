@@ -2,8 +2,15 @@
 {% from "_icons.html" import icon %}
 {% block title %}{{ v.display_ref }} · Featherstone{% endblock %}
 {% block header %}
-<header style="padding: calc(12px + env(safe-area-inset-top)) 16px 0;">
+<header class="verse-top" style="padding: calc(12px + env(safe-area-inset-top)) 16px 0;">
   <a class="back" href="{{ url_for('main.stage', stage=v.stage) }}">{{ icon('back', 20) }}{{ STAGE_TITLES[v.stage] }}</a>
+  {% if nav %}
+  <nav class="verse-nav" aria-label="Other verses in {{ STAGE_TITLES[v.stage] }}">
+    {% if nav.prev %}<a class="step" href="{{ url_for('main.verse', vid=nav.prev) }}" data-swipe-prev aria-label="Previous verse">{{ icon('back', 20) }}</a>{% else %}<span class="step off" aria-hidden="true">{{ icon('back', 20) }}</span>{% endif %}
+    <span class="count">{{ nav.pos }} of {{ nav.total }}</span>
+    {% if nav.next %}<a class="step" href="{{ url_for('main.verse', vid=nav.next) }}" data-swipe-next aria-label="Next verse">{{ icon('chev', 20) }}</a>{% else %}<span class="step off" aria-hidden="true">{{ icon('chev', 20) }}</span>{% endif %}
+  </nav>
+  {% endif %}
 </header>
 {% endblock %}
 {% block content %}
@@ -183,6 +190,34 @@
 
 {% block scripts %}
 <script>
+  // Swipe left for the next verse in this stage, right for the previous one.
+  (function () {
+    var prev = document.querySelector("[data-swipe-prev]");
+    var next = document.querySelector("[data-swipe-next]");
+    if (!prev && !next) return;
+    var x0 = null, y0 = 0, t0 = 0;
+    document.addEventListener("touchstart", function (e) {
+      var t = e.touches[0];
+      x0 = null;
+      if (e.touches.length !== 1) return;
+      // Leave the screen edges to the browser's own back gesture, and leave form fields alone.
+      if (t.clientX < 24 || t.clientX > window.innerWidth - 24) return;
+      if (e.target.closest("input, textarea, select, [contenteditable]")) return;
+      x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
+    }, { passive: true });
+    document.addEventListener("touchend", function (e) {
+      if (x0 === null) return;
+      var t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+      x0 = null;
+      if (Date.now() - t0 > 800 || Math.abs(dx) < 70 || Math.abs(dx) < 2 * Math.abs(dy)) return;
+      if (window.getSelection && String(window.getSelection())) return;
+      var go = dx < 0 ? next : prev;
+      if (!go) return;
+      document.body.classList.add(dx < 0 ? "leaving-left" : "leaving-right");
+      location.replace(go.href);
+    }, { passive: true });
+    window.addEventListener("pageshow", function () { document.body.classList.remove("leaving-left", "leaving-right"); });
+  })();
   // Read / First letters / Hide. The choice is remembered on this phone.
   (function () {
     var box = document.querySelector("[data-practice]");

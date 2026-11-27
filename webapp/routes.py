@@ -64,8 +64,16 @@ def verse(vid: str):
     v = db.session.get(Verse, vid) or abort(404)
     cfg = svc.get_settings()
     s = v.sched()
+    # Same order as the stage list, so swiping walks the list.
+    ids = [it.verse.id for it in svc.stage_view(v.stage, today())]
+    pos = ids.index(v.id) if v.id in ids else None
+    nav = None
+    if pos is not None and len(ids) > 1:
+        nav = {"pos": pos + 1, "total": len(ids),
+               "prev": ids[pos - 1] if pos > 0 else None,
+               "next": ids[pos + 1] if pos + 1 < len(ids) else None}
     return render_template(
-        "verse.html", tab="verses", v=v, s=s, cfg=cfg, practice=svc.is_practice(v, today()),
+        "verse.html", nav=nav, tab="verses", v=v, s=s, cfg=cfg, practice=svc.is_practice(v, today()),
         open_until=schedule.window_end(s, cfg) if s else None,
         label=schedule.label(s, cfg) if s else None,
         progress=svc.progress(v, cfg), rhythm=svc.rhythm(v),

@@ -105,6 +105,16 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .title-meta strong { color: var(--ink); font-weight: 600; }
 .back { display: inline-flex; align-items: center; gap: 2px; min-height: 44px;
   color: var(--accent); font-weight: 500; margin-left: -6px; }
+.verse-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.verse-nav { display: flex; align-items: center; gap: 2px; margin-right: -10px; }
+.verse-nav .count { font-size: 14px; color: var(--muted); min-width: 4.5em; text-align: center;
+  font-variant-numeric: tabular-nums; }
+.verse-nav .step { display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; color: var(--accent); }
+.verse-nav .step.off { color: var(--muted); opacity: .3; }
+body.leaving-left main, body.leaving-right main { transition: transform .18s ease, opacity .18s ease; opacity: 0; }
+body.leaving-left main { transform: translateX(-24px); }
+body.leaving-right main { transform: translateX(24px); }
 
 .chips { display: flex; gap: 8px; margin-top: 14px; overflow-x: auto; scrollbar-width: none;
   margin-inline: -24px; padding-inline: 24px; }

@@ -83,6 +83,28 @@ def test_up_next_page(app):
     assert client.post(f"/verse/{v.id}/up-next").status_code == 400
 
 
+def test_verse_page_steps_through_stage(app):
+    cfg = svc.get_settings()
+    cfg["auto_add"]["every_n_days"] = 0
+    svc.save_settings(cfg)
+    a = svc.add_verse("Alma 32:21").verse
+    b = svc.add_verse("Ether 12:27").verse
+    c = svc.add_verse("Moroni 10:4").verse
+    db.session.commit()
+    order = [it.verse.id for it in svc.stage_view("backlog", DAY)]
+    client = app.test_client()
+    mid = client.get(f"/verse/{order[1]}").get_data(as_text=True)
+    assert "2 of 3" in mid
+    assert f'href="/verse/{order[0]}" data-swipe-prev' in mid
+    assert f'href="/verse/{order[2]}" data-swipe-next' in mid
+    first = client.get(f"/verse/{order[0]}").get_data(as_text=True)
+    assert "1 of 3" in first and "\" data-swipe-prev" not in first
+    svc.start_verse(a, DAY)
+    db.session.commit()
+    alone = client.get(f"/verse/{a.id}").get_data(as_text=True)
+    assert "\" data-swipe-next" not in alone and "verse-nav\"" not in alone
+
+
 def test_intake_off_when_zero(app):
     svc.add_verse("Alma 32:21")
     cfg = svc.get_settings()
